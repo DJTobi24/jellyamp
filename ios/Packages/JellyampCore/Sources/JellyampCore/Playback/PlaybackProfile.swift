@@ -48,7 +48,9 @@ public struct PlaybackProfile: Sendable {
             return transcodeRequest(cap: cap)
         }
         let codecSupported = track.codec.map { Self.nativeCodecs.contains($0.lowercased()) } ?? false
-        let bitrateOK = cap.map { track.bitrate.map { bitrate in bitrate <= $0 } ?? true } ?? true
+        let bitrateOK = cap.map { capValue in
+            track.bitrate.map { bitrate in bitrate <= capValue } ?? true
+        } ?? true
         if codecSupported && bitrateOK {
             return .directPlay
         }

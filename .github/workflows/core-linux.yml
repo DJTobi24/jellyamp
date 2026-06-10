@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.0
     strategy:
+      fail-fast: false
       matrix:
         package: [JellyampCore, SonicClient, JellyfinBackend]
     steps:
