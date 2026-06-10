@@ -1,10 +1,12 @@
 name: Swift packages (Linux)
 
 on:
+  workflow_dispatch:
   push:
     branches: ["**"]
     paths:
       - "ios/Packages/**"
+      - "scripts/**"
       - ".github/workflows/core-linux.yml"
   pull_request:
     paths:

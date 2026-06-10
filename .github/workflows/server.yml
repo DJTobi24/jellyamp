@@ -1,6 +1,7 @@
 name: jellyamp-server
 
 on:
+  workflow_dispatch:
   push:
     branches: ["**"]
     paths:
