@@ -6,7 +6,7 @@ import JellyampCore
 struct BaseItemDto: Codable {
     struct MediaSource: Codable {
         struct MediaStream: Codable {
-            var Type: String?
+            var `Type`: String?
             var Codec: String?
             var SampleRate: Int?
             var BitDepth: Int?
