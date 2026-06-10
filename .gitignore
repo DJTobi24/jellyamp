@@ -1,0 +1,36 @@
+# Xcode
+*.xcodeproj
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+
+# Server runtime data
+server/data/
+*.sqlite
+*.sqlite3
+server/jellyamp_server/analysis/models/*.pb
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp

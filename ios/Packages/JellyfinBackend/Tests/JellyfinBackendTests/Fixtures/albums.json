@@ -1,0 +1,17 @@
+{
+    "Items": [
+        {
+            "Id": "album1",
+            "Name": "Great Album",
+            "Type": "MusicAlbum",
+            "AlbumArtists": [{ "Name": "The Band", "Id": "artist1" }],
+            "ProductionYear": 1994,
+            "Genres": ["Shoegaze", "Dream Pop"],
+            "ChildCount": 11,
+            "RunTimeTicks": 26400000000,
+            "ImageTags": { "Primary": "tag-album1" },
+            "UserData": { "IsFavorite": false }
+        }
+    ],
+    "TotalRecordCount": 1
+}

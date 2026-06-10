@@ -1,0 +1,22 @@
+services:
+  jellyamp-server:
+    build:
+      context: .
+      args:
+        WITH_ANALYSIS: "1"
+    ports:
+      - "8095:8095"
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  # Uncomment to run Jellyfin alongside for a self-contained stack:
+  # jellyfin:
+  #   image: jellyfin/jellyfin
+  #   ports:
+  #     - "8096:8096"
+  #   volumes:
+  #     - ./jellyfin-config:/config
+  #     - /path/to/music:/media/music:ro
+  #   restart: unless-stopped

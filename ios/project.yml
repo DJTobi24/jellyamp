@@ -1,0 +1,75 @@
+name: Jellyamp
+options:
+  bundleIdPrefix: dev.djtobi
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  JellyampCore:
+    path: Packages/JellyampCore
+  JellyfinBackend:
+    path: Packages/JellyfinBackend
+  SonicClient:
+    path: Packages/SonicClient
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 6.29.0
+
+targets:
+  Jellyamp:
+    type: application
+    platform: iOS
+    sources:
+      - Jellyamp
+    dependencies:
+      - package: JellyampCore
+      - package: JellyfinBackend
+      - package: SonicClient
+      - package: GRDB
+    info:
+      path: Jellyamp/Info.plist
+      properties:
+        CFBundleDisplayName: Jellyamp
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIBackgroundModes:
+          - audio
+        NSAppTransportSecurity:
+          # Many self-hosted Jellyfin servers run plain HTTP on the LAN.
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: >-
+          Jellyamp connects to your Jellyfin server on the local network to
+          stream your music.
+    entitlements:
+      path: Jellyamp/Jellyamp.entitlements
+      properties:
+        com.apple.developer.playable-content: true
+        com.apple.developer.siri: true
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_USER_SCRIPT_SANDBOXING: true
+
+  JellyampTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - JellyampTests
+    dependencies:
+      - target: Jellyamp
+
+schemes:
+  Jellyamp:
+    build:
+      targets:
+        Jellyamp: all
+    test:
+      targets:
+        - JellyampTests
