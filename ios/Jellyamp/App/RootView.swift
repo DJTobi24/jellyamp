@@ -25,6 +25,7 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
         .tint(.white)
+        .tabBarMinimizesOnScroll()
         .safeAreaInset(edge: .bottom) {
             MiniPlayerView()
         }

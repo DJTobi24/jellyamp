@@ -9,9 +9,9 @@ on:
 
 jobs:
   build:
-    # Recent XcodeGen emits the Xcode 16 project format (objectVersion 77),
-    # which Xcode 15.x on macos-14 cannot open.
-    runs-on: macos-15
+    # macos-26 ships the iOS 26 SDK (Liquid Glass APIs); recent XcodeGen also
+    # emits the Xcode 16+ project format that older runners cannot open.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Install XcodeGen

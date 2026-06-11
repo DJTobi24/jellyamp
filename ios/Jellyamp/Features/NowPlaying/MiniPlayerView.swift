@@ -33,7 +33,7 @@ struct MiniPlayerView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .glassPanel(cornerRadius: 16)
                 .padding(.horizontal, 8)
             }
             .buttonStyle(.plain)

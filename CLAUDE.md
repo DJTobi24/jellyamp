@@ -17,6 +17,10 @@ local SPM packages), `server/` (optional FastAPI sonic-analysis companion),
   follow `SonicCapabilities`.
 - The Xcode project is generated (`cd ios && xcodegen generate`); never check
   in `*.xcodeproj`. App-target settings live in `ios/project.yml`.
+- iOS 26 / Liquid Glass APIs are used only via the gated helpers in
+  `ios/Jellyamp/DesignSystem/GlassStyle.swift` (deployment target stays
+  iOS 16). The iOS CI job therefore needs the `macos-26` runner (iOS 26 SDK).
+  See `docs/DESIGN.md`.
 
 ## Verification
 

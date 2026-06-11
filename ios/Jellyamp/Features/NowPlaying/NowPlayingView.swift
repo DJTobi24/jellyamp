@@ -78,6 +78,9 @@ struct PlayerControlsView: View {
             }
         }
         .foregroundStyle(.white)
+        .padding(.horizontal, 28)
+        .padding(.vertical, 14)
+        .glassCapsule()
     }
 }
 
