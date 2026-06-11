@@ -14,26 +14,26 @@ final class PlaybackProfileTests: XCTestCase {
     func testFlacOverCellularCapTranscodes() {
         let profile = PlaybackProfile(maxBitrateCellular: 320_000)
         let request = profile.request(for: track(codec: "flac", bitrate: 1_000_000), network: .cellular)
-        XCTAssertEqual(request, .transcode(codec: "aac", container: "m4a", maxBitrate: 320_000))
+        XCTAssertEqual(request, .transcode(codec: "aac", container: "ts", maxBitrate: 320_000))
     }
 
     func testUnsupportedCodecTranscodes() {
         let profile = PlaybackProfile()
         let request = profile.request(for: track(codec: "wma", bitrate: 128_000), network: .wifi)
-        XCTAssertEqual(request, .transcode(codec: "aac", container: "m4a", maxBitrate: 320_000))
+        XCTAssertEqual(request, .transcode(codec: "aac", container: "ts", maxBitrate: 320_000))
     }
 
     func testForceTranscodeOnCellular() {
         let profile = PlaybackProfile(forceTranscodeOnCellular: true)
         let request = profile.request(for: track(codec: "mp3", bitrate: 128_000), network: .cellular)
-        XCTAssertEqual(request, .transcode(codec: "aac", container: "m4a", maxBitrate: 320_000))
+        XCTAssertEqual(request, .transcode(codec: "aac", container: "ts", maxBitrate: 320_000))
         XCTAssertEqual(profile.request(for: track(codec: "mp3", bitrate: 128_000), network: .wifi), .directPlay)
     }
 
     func testUnknownCodecIsConservativelyTranscoded() {
         let profile = PlaybackProfile()
         let request = profile.request(for: track(codec: nil, bitrate: nil), network: .wifi)
-        XCTAssertEqual(request, .transcode(codec: "aac", container: "m4a", maxBitrate: 320_000))
+        XCTAssertEqual(request, .transcode(codec: "aac", container: "ts", maxBitrate: 320_000))
     }
 }
 

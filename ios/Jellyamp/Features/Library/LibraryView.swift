@@ -76,22 +76,27 @@ struct AlbumDetailView: View {
             }
             Section {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                    Button {
-                        play(from: index)
-                    } label: {
-                        HStack {
-                            Text("\(track.indexNumber ?? index + 1)")
-                                .foregroundStyle(.secondary)
-                                .frame(width: 28, alignment: .trailing)
-                            Text(track.title)
-                                .lineLimit(1)
-                            Spacer()
-                            Text(format(duration: track.duration))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Button {
+                            play(from: index)
+                        } label: {
+                            HStack {
+                                Text("\(track.indexNumber ?? index + 1)")
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 28, alignment: .trailing)
+                                Text(track.title)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(format(duration: track.duration))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        TrackMenuButton(track: track)
                     }
-                    .buttonStyle(.plain)
+                    .trackContextActions(track)
                 }
             }
         }
@@ -137,23 +142,69 @@ struct ArtistDetailView: View {
     @EnvironmentObject private var container: DependencyContainer
     let artist: Artist
     @State private var albums: [Album] = []
+    @State private var tracks: [Track] = []
+    @State private var loaded = false
 
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 16) {
-                ForEach(albums) { album in
-                    NavigationLink(destination: AlbumDetailView(album: album)) {
-                        AlbumCard(album: album)
+        List {
+            if !albums.isEmpty {
+                Section("Albums") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(albums) { album in
+                                NavigationLink(destination: AlbumDetailView(album: album)) {
+                                    AlbumCard(album: album).frame(width: 150)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
-                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
                 }
             }
-            .padding(.horizontal)
+            if !tracks.isEmpty {
+                Section("Songs") {
+                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                        HStack(spacing: 8) {
+                            Button {
+                                container.player?.load(queue: PlayQueue(tracks: tracks, startAt: index))
+                            } label: {
+                                HStack {
+                                    Text(track.title).lineLimit(1)
+                                    Spacer()
+                                    Text(format(duration: track.duration))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            TrackMenuButton(track: track)
+                        }
+                        .trackContextActions(track)
+                    }
+                }
+            }
+            if loaded, albums.isEmpty, tracks.isEmpty {
+                Text("No tracks found for this artist.")
+                    .foregroundStyle(.secondary)
+            }
         }
+        .listStyle(.plain)
         .navigationTitle(artist.name)
         .task {
-            albums = (try? await container.library?.albums(byArtist: artist.id)) ?? []
+            guard let library = container.library else { return }
+            albums = (try? await library.albums(byArtist: artist.id)) ?? []
+            tracks = (try? await library.tracks(byArtist: artist.id)) ?? []
+            loaded = true
         }
+    }
+
+    private func format(duration: TimeInterval) -> String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 

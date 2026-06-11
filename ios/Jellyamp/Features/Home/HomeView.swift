@@ -17,18 +17,32 @@ struct HomeView: View {
                     if !mixes.isEmpty {
                         shelf(title: "Mixes for You") {
                             ForEach(mixes) { mix in
-                                MixCard(mix: mix)
+                                Button {
+                                    play(mix: mix)
+                                } label: {
+                                    MixCard(mix: mix)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
                     shelf(title: "Recently Added") {
                         ForEach(recentAlbums) { album in
-                            AlbumCard(album: album)
+                            NavigationLink(destination: AlbumDetailView(album: album)) {
+                                AlbumCard(album: album)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     shelf(title: "Recently Played") {
-                        ForEach(recentTracks) { track in
-                            TrackCard(track: track)
+                        ForEach(Array(recentTracks.enumerated()), id: \.element.id) { index, track in
+                            Button {
+                                container.player?.load(queue: PlayQueue(tracks: recentTracks, startAt: index))
+                            } label: {
+                                TrackCard(track: track)
+                            }
+                            .buttonStyle(.plain)
+                            .trackContextActions(track)
                         }
                     }
                 }
@@ -47,6 +61,13 @@ struct HomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12, content: content)
             }
+        }
+    }
+
+    private func play(mix: MixDescriptor) {
+        Task {
+            guard let tracks = try? await container.library?.tracks(byIDs: mix.itemIDs), !tracks.isEmpty else { return }
+            container.player?.load(queue: PlayQueue(tracks: tracks))
         }
     }
 

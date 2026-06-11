@@ -9,6 +9,7 @@ struct JellyampApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(container)
+                .environmentObject(container.playerState)
                 .preferredColorScheme(.dark)
                 .task {
                     await container.bootstrap()

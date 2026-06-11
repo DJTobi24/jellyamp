@@ -23,4 +23,14 @@ public protocol PlayerEngine: AnyObject {
     func skipToPrevious()
     func setVolume(_ volume: Double)
     func apply(eqPreset: EQPreset)
+
+    // Queue editing (Spotify-style). Adding to an empty queue starts playback.
+    /// Append tracks to the end of the queue ("Add to Queue").
+    func enqueue(_ tracks: [Track])
+    /// Insert tracks right after the current one ("Play Next").
+    func playNext(_ tracks: [Track])
+    /// Jump to an upcoming item (index into the current `upNext`).
+    func playUpNext(at upNextIndex: Int)
+    /// Remove an upcoming item (index into the current `upNext`).
+    func removeUpNext(at upNextIndex: Int)
 }

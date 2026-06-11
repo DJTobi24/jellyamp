@@ -34,6 +34,9 @@ targets:
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         UILaunchScreen: {}
+        # Portrait-only music player; declaring full-screen satisfies the iPad
+        # "all orientations" requirement without supporting landscape.
+        UIRequiresFullScreen: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIBackgroundModes:
@@ -48,7 +51,9 @@ targets:
     entitlements:
       path: Jellyamp/Jellyamp.entitlements
       properties:
-        com.apple.developer.playable-content: true
+        # NOTE: CarPlay (com.apple.developer.playable-content) needs Apple to
+        # approve the "CarPlay Audio App" capability for the team + bundle ID
+        # before it can go into a provisioning profile. Re-add it once granted.
         com.apple.developer.siri: true
     settings:
       base:

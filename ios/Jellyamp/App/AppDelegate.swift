@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+            try session.setCategory(.playback, mode: .default)
         } catch {
             assertionFailure("audio session setup failed: \(error)")
         }

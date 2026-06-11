@@ -40,17 +40,27 @@ struct SearchView: View {
                 if !tracks.isEmpty {
                     Section("Tracks") {
                         ForEach(tracks) { track in
-                            Button {
-                                container.player?.load(queue: PlayQueue(tracks: [track]))
-                            } label: {
-                                VStack(alignment: .leading) {
-                                    Text(track.title)
-                                    Text(track.artistName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                            HStack(spacing: 12) {
+                                Button {
+                                    container.player?.load(queue: PlayQueue(tracks: [track]))
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 44)
+                                        VStack(alignment: .leading) {
+                                            Text(track.title).lineLimit(1)
+                                            Text(track.artistName)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer(minLength: 0)
+                                    }
+                                    .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+                                TrackMenuButton(track: track)
                             }
-                            .buttonStyle(.plain)
+                            .trackContextActions(track)
                         }
                     }
                 }
