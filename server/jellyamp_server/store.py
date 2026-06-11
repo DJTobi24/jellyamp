@@ -1,12 +1,13 @@
-"""SQLite store for track embeddings and loudness.
+"""SQLite store for track embeddings, loudness, and station metadata.
 
 Embeddings are float32 BLOBs; similarity queries load them into numpy.
 Libraries up to a few hundred thousand tracks are fine with brute-force
 cosine distance; a sqlite-vec index is a drop-in upgrade later.
 """
 
+import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -19,10 +20,13 @@ CREATE TABLE IF NOT EXISTS tracks (
     embedding BLOB NOT NULL,
     integrated_lufs REAL,
     true_peak REAL,
+    genres TEXT NOT NULL DEFAULT '[]',
+    year INTEGER,
     analyzed_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist_id);
 CREATE INDEX IF NOT EXISTS idx_tracks_album ON tracks(album_id);
+CREATE INDEX IF NOT EXISTS idx_tracks_year ON tracks(year);
 """
 
 
@@ -34,6 +38,8 @@ class TrackRecord:
     album_id: str | None = None
     integrated_lufs: float | None = None
     true_peak: float | None = None
+    genres: list[str] = field(default_factory=list)
+    year: int | None = None
 
 
 class EmbeddingStore:
@@ -46,14 +52,17 @@ class EmbeddingStore:
     def upsert(self, record: TrackRecord) -> None:
         self._conn.execute(
             """
-            INSERT INTO tracks (item_id, artist_id, album_id, embedding, integrated_lufs, true_peak)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO tracks
+                (item_id, artist_id, album_id, embedding, integrated_lufs, true_peak, genres, year)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(item_id) DO UPDATE SET
                 artist_id = excluded.artist_id,
                 album_id = excluded.album_id,
                 embedding = excluded.embedding,
                 integrated_lufs = excluded.integrated_lufs,
                 true_peak = excluded.true_peak,
+                genres = excluded.genres,
+                year = excluded.year,
                 analyzed_at = datetime('now')
             """,
             (
@@ -63,14 +72,17 @@ class EmbeddingStore:
                 record.embedding.astype(np.float32).tobytes(),
                 record.integrated_lufs,
                 record.true_peak,
+                json.dumps(record.genres),
+                record.year,
             ),
         )
         self._conn.commit()
 
+    _COLUMNS = "item_id, artist_id, album_id, embedding, integrated_lufs, true_peak, genres, year"
+
     def get(self, item_id: str) -> TrackRecord | None:
         row = self._conn.execute(
-            "SELECT item_id, artist_id, album_id, embedding, integrated_lufs, true_peak"
-            " FROM tracks WHERE item_id = ?",
+            f"SELECT {self._COLUMNS} FROM tracks WHERE item_id = ?",  # noqa: S608
             (item_id,),
         ).fetchone()
         if row is None:
@@ -78,9 +90,7 @@ class EmbeddingStore:
         return self._record(row)
 
     def all_tracks(self) -> list[TrackRecord]:
-        rows = self._conn.execute(
-            "SELECT item_id, artist_id, album_id, embedding, integrated_lufs, true_peak FROM tracks"
-        ).fetchall()
+        rows = self._conn.execute(f"SELECT {self._COLUMNS} FROM tracks").fetchall()  # noqa: S608
         return [self._record(row) for row in rows]
 
     def count(self) -> int:
@@ -98,4 +108,6 @@ class EmbeddingStore:
             embedding=np.frombuffer(row[3], dtype=np.float32),
             integrated_lufs=row[4],
             true_peak=row[5],
+            genres=json.loads(row[6]) if row[6] else [],
+            year=row[7],
         )

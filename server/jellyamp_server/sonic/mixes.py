@@ -73,6 +73,28 @@ def build_mixes(
     return mixes
 
 
+def station_subset(
+    library: list[TrackRecord],
+    station_type: str,
+    seed: str,
+) -> list[TrackRecord]:
+    """Tracks eligible for a genre/style/decade station.
+
+    Genre and style both match against track genre tags (Jellyfin does not
+    distinguish them); decade seeds look like "1990s".
+    """
+    if station_type in ("genre", "style"):
+        wanted = seed.lower()
+        return [t for t in library if any(g.lower() == wanted for g in t.genres)]
+    if station_type == "decade":
+        try:
+            start = int(seed[:4])
+        except ValueError:
+            return []
+        return [t for t in library if t.year is not None and start <= t.year <= start + 9]
+    return []
+
+
 def build_station(
     seed_tracks: list[TrackRecord],
     library: list[TrackRecord],

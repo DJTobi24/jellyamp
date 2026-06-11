@@ -225,12 +225,18 @@ def create_app(
             seed = get_track_or_404(request.seed)
             item_ids = mixes.build_station([seed], all_tracks, count=request.count)
         else:
-            # genre/decade/style need Jellyfin metadata to choose seed tracks;
-            # served via Jellyfin random query + sonic re-ranking in Phase 3.
-            raise HTTPException(
-                status_code=409,
-                detail=f"station type {request.type!r} requires metadata indexing (Phase 3)",
-            )
+            subset = mixes.station_subset(all_tracks, request.type, request.seed)
+            if not subset:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"no analyzed tracks match {request.type} {request.seed!r}",
+                )
+            # Sonic ranking within the subset keeps the station coherent
+            # instead of a flat random shuffle of the whole genre.
+            seeds = subset[:: max(len(subset) // 5, 1)][:5]
+            item_ids = mixes.build_station(seeds, subset, count=request.count)
+            if not item_ids:
+                item_ids = [t.item_id for t in subset[: request.count]]
         return StationResponse(itemIds=item_ids)
 
     @app.get(

@@ -90,9 +90,12 @@ a week.
 { "type": "genre", "seed": "Shoegaze", "count": 100 }
 ```
 
-`type` ∈ `genre | mood | decade | style`; `seed` is a genre/style name, a
-decade string (`"1990s"`), or an item ID for mood (mood = neighbourhood around
-the seed track's embedding). Response:
+`type` ∈ `genre | mood | decade | style`; `seed` is a genre/style name
+(matched case-insensitively against track genre tags), a decade string
+(`"1990s"`), or an item ID for mood (mood = neighbourhood around the seed
+track's embedding). Genre/style/decade stations are sonically ranked within
+the matching subset of analyzed tracks; `404` when no analyzed track matches
+the seed. Response:
 
 ```json
 { "itemIds": ["a1…", "b2…"] }

@@ -33,6 +33,8 @@ async def scan_once(client: JellyfinClient, store: EmbeddingStore) -> int:
                     album_id=item.get("AlbumId"),
                     integrated_lufs=result.integrated_lufs,
                     true_peak=result.true_peak,
+                    genres=item.get("Genres") or [],
+                    year=item.get("ProductionYear"),
                 )
             )
             analyzed += 1

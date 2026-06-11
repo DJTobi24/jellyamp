@@ -26,11 +26,27 @@ def fixture(name: str) -> dict:
 def client(store: EmbeddingStore, monkeypatch) -> TestClient:
     monkeypatch.setattr(settings, "sonic_api_key", API_KEY)
     seed_tracks = [
-        make_track("seed", [1, 0, 0], artist_id="art-1", album_id="alb-1", lufs=-9.4, peak=-0.3),
         make_track(
-            "close", [0.9, 0.1, 0], artist_id="art-2", album_id="alb-2", lufs=-11.0, peak=-1.0
+            "seed",
+            [1, 0, 0],
+            artist_id="art-1",
+            album_id="alb-1",
+            lufs=-9.4,
+            peak=-0.3,
+            genres=["Shoegaze"],
+            year=1991,
         ),
-        make_track("medium", [0.5, 0.5, 0], artist_id="art-3", album_id="alb-3"),
+        make_track(
+            "close",
+            [0.9, 0.1, 0],
+            artist_id="art-2",
+            album_id="alb-2",
+            lufs=-11.0,
+            peak=-1.0,
+            genres=["Shoegaze"],
+            year=1993,
+        ),
+        make_track("medium", [0.5, 0.5, 0], artist_id="art-3", album_id="alb-3", year=2004),
         make_track("far", [0, 0, 1], artist_id="art-4", album_id="alb-4"),
     ]
     for track in seed_tracks:
@@ -108,13 +124,35 @@ def test_mood_station_matches_fixture_shape(client):
     assert set(response.json()) == set(fixture("station"))
 
 
-def test_genre_station_reports_unavailable(client):
+def test_genre_station_returns_matching_tracks(client):
     response = client.post(
         "/api/v1/stations",
         headers=auth(),
-        json={"type": "genre", "seed": "Shoegaze", "count": 10},
+        json={"type": "genre", "seed": "shoegaze", "count": 10},
     )
-    assert response.status_code == 409
+    assert response.status_code == 200
+    item_ids = response.json()["itemIds"]
+    assert item_ids
+    assert set(item_ids) <= {"seed", "close"}
+
+
+def test_decade_station_returns_matching_tracks(client):
+    response = client.post(
+        "/api/v1/stations",
+        headers=auth(),
+        json={"type": "decade", "seed": "1990s", "count": 10},
+    )
+    assert response.status_code == 200
+    assert set(response.json()["itemIds"]) <= {"seed", "close"}
+
+
+def test_unknown_genre_station_is_404(client):
+    response = client.post(
+        "/api/v1/stations",
+        headers=auth(),
+        json={"type": "genre", "seed": "Zydeco", "count": 10},
+    )
+    assert response.status_code == 404
 
 
 def test_loudness_matches_fixture(client):

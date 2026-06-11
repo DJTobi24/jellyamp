@@ -2,7 +2,7 @@ import datetime as dt
 
 from conftest import make_track
 
-from jellyamp_server.sonic.mixes import build_mixes, build_station, week_key
+from jellyamp_server.sonic.mixes import build_mixes, build_station, station_subset, week_key
 
 
 def library():
@@ -46,3 +46,32 @@ def test_build_station_fills_count_and_excludes_nothing_twice():
     item_ids = build_station(seeds, library(), count=5, shuffle_seed=1)
     assert len(item_ids) == 5
     assert len(set(item_ids)) == 5
+
+
+def tagged_library():
+    return [
+        make_track("sg1", [1.0, 0.0], genres=["Shoegaze"], year=1991),
+        make_track("sg2", [0.9, 0.1], genres=["Shoegaze", "Dream Pop"], year=1993),
+        make_track("dp1", [0.8, 0.2], genres=["Dream Pop"], year=2004),
+        make_track("mt1", [0.0, 1.0], genres=["Metal"], year=1991),
+        make_track("untagged", [0.5, 0.5]),
+    ]
+
+
+def test_station_subset_genre_is_case_insensitive():
+    subset = station_subset(tagged_library(), "genre", "shoegaze")
+    assert [t.item_id for t in subset] == ["sg1", "sg2"]
+
+
+def test_station_subset_style_matches_genre_tags():
+    subset = station_subset(tagged_library(), "style", "Dream Pop")
+    assert [t.item_id for t in subset] == ["sg2", "dp1"]
+
+
+def test_station_subset_decade():
+    subset = station_subset(tagged_library(), "decade", "1990s")
+    assert [t.item_id for t in subset] == ["sg1", "sg2", "mt1"]
+
+
+def test_station_subset_invalid_decade_seed():
+    assert station_subset(tagged_library(), "decade", "neunziger") == []

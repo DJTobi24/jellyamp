@@ -31,7 +31,7 @@ class JellyfinClient:
                 params={
                     "includeItemTypes": "Audio",
                     "recursive": "true",
-                    "fields": "ParentId",
+                    "fields": "ParentId,Genres,ProductionYear",
                     "startIndex": start,
                     "limit": page_size,
                 },

@@ -11,6 +11,8 @@ def make_track(
     album_id: str | None = None,
     lufs: float | None = None,
     peak: float | None = None,
+    genres: list[str] | None = None,
+    year: int | None = None,
 ) -> TrackRecord:
     return TrackRecord(
         item_id=item_id,
@@ -19,6 +21,8 @@ def make_track(
         album_id=album_id,
         integrated_lufs=lufs,
         true_peak=peak,
+        genres=genres or [],
+        year=year,
     )
 
 
