@@ -1,0 +1,52 @@
+{
+    "Items": [
+        {
+            "Id": "track1",
+            "Name": "Opening Song",
+            "Type": "Audio",
+            "Album": "Great Album",
+            "AlbumId": "album1",
+            "AlbumArtist": "The Band",
+            "ArtistItems": [{ "Name": "The Band", "Id": "artist1" }],
+            "IndexNumber": 1,
+            "ParentIndexNumber": 1,
+            "RunTimeTicks": 2400000000,
+            "NormalizationGain": -7.2,
+            "ProductionYear": 1994,
+            "Genres": ["Shoegaze"],
+            "UserData": { "IsFavorite": true, "PlayCount": 12 },
+            "AlbumPrimaryImageTag": "abc123",
+            "MediaSources": [
+                {
+                    "Container": "flac",
+                    "Bitrate": 1411000,
+                    "MediaStreams": [
+                        { "Type": "Audio", "Codec": "flac", "SampleRate": 44100, "BitDepth": 16 }
+                    ]
+                }
+            ]
+        },
+        {
+            "Id": "track2",
+            "Name": "Second Song",
+            "Type": "Audio",
+            "Album": "Great Album",
+            "AlbumId": "album1",
+            "AlbumArtist": "The Band",
+            "ArtistItems": [{ "Name": "The Band", "Id": "artist1" }],
+            "IndexNumber": 2,
+            "ParentIndexNumber": 1,
+            "RunTimeTicks": 1800000000,
+            "MediaSources": [
+                {
+                    "Container": "mp3",
+                    "Bitrate": 320000,
+                    "MediaStreams": [
+                        { "Type": "Audio", "Codec": "mp3", "SampleRate": 44100 }
+                    ]
+                }
+            ]
+        }
+    ],
+    "TotalRecordCount": 2
+}

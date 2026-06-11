@@ -1,0 +1,6 @@
+{
+    "Lyrics": [
+        { "Text": "First line", "Start": 10000000 },
+        { "Text": "Second line", "Start": 55000000 }
+    ]
+}

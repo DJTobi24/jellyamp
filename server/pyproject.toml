@@ -1,0 +1,44 @@
+[project]
+name = "jellyamp-server"
+version = "0.1.0"
+description = "Optional sonic-analysis companion server for Jellyamp: audio embeddings, similarity, Sonic Adventure, auto-mixes."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "numpy>=1.26",
+    "apscheduler>=3.10",
+]
+
+[project.optional-dependencies]
+# Audio analysis is heavy; the API runs (with capabilities reported per
+# analyzed data) without it, which keeps tests light.
+analysis = [
+    "essentia-tensorflow>=2.1b6.dev1110",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["jellyamp_server*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
