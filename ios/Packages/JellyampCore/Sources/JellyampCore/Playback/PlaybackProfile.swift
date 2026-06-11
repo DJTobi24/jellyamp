@@ -18,8 +18,9 @@ public enum StreamRequest: Equatable, Sendable {
 /// Pure decision logic: direct play whenever the device can decode the codec
 /// and the bitrate fits the user's caps; otherwise transcode.
 public struct PlaybackProfile: Sendable {
-    /// Codecs iOS decodes natively (lowercased).
-    public static let nativeCodecs: Set<String> = ["flac", "alac", "aac", "mp3", "wav", "pcm", "opus", "vorbis", "ac3", "eac3"]
+    /// Codecs AVPlayer can *stream* natively (lowercased). Opus/Vorbis decode
+    /// locally in files but not over progressive HTTP, so they transcode.
+    public static let nativeCodecs: Set<String> = ["flac", "alac", "aac", "mp3", "wav", "aiff", "ac3", "eac3"]
 
     public var maxBitrateWifi: Int?
     public var maxBitrateCellular: Int?
@@ -33,7 +34,7 @@ public struct PlaybackProfile: Sendable {
         maxBitrateCellular: Int? = 320_000,
         forceTranscodeOnCellular: Bool = false,
         transcodeCodec: String = "aac",
-        transcodeContainer: String = "m4a"
+        transcodeContainer: String = "ts"
     ) {
         self.maxBitrateWifi = maxBitrateWifi
         self.maxBitrateCellular = maxBitrateCellular

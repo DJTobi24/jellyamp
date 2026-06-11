@@ -146,13 +146,14 @@ final class StreamURLBuilderTests: XCTestCase {
     func testTranscodeURL() {
         let url = StreamURLBuilder.url(
             for: "track1",
-            request: .transcode(codec: "aac", container: "m4a", maxBitrate: 320_000),
+            request: .transcode(codec: "aac", container: "ts", maxBitrate: 320_000),
             session: testSession
         )
         let query = queryItems(of: url)
         XCTAssertNil(query["static"])
         XCTAssertEqual(query["audioCodec"], "aac")
-        XCTAssertEqual(query["transcodingContainer"], "m4a")
+        XCTAssertEqual(query["transcodingContainer"], "ts")
+        XCTAssertEqual(query["transcodingProtocol"], "hls", "AVPlayer needs the HLS transcode path")
         XCTAssertEqual(query["maxStreamingBitrate"], "320000")
     }
 

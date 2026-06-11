@@ -21,9 +21,13 @@ public enum StreamURLBuilder {
             query.append(contentsOf: [
                 URLQueryItem(name: "container", value: acceptedContainers),
                 URLQueryItem(name: "transcodingContainer", value: container),
-                URLQueryItem(name: "transcodingProtocol", value: "http"),
+                // HLS is the transcode path AVPlayer handles reliably (and
+                // what jellyfin-web/Finamp request); progressive HTTP m4a
+                // stalls because the moov atom arrives last.
+                URLQueryItem(name: "transcodingProtocol", value: "hls"),
                 URLQueryItem(name: "audioCodec", value: codec),
                 URLQueryItem(name: "maxStreamingBitrate", value: String(maxBitrate)),
+                URLQueryItem(name: "enableRedirection", value: "true"),
             ])
         }
         var components = URLComponents(

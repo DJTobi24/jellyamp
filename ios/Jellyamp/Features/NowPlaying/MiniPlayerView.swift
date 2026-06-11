@@ -44,8 +44,9 @@ struct MiniPlayerView: View {
                 .padding(.horizontal, 8)
             }
             .buttonStyle(.plain)
-            .sheet(isPresented: $showNowPlaying) {
+            .fullScreenCover(isPresented: $showNowPlaying) {
                 NowPlayingView(playerState: playerState)
+                    .environmentObject(container)
             }
         }
     }
