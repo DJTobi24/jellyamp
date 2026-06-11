@@ -9,7 +9,9 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    # Recent XcodeGen emits the Xcode 16 project format (objectVersion 77),
+    # which Xcode 15.x on macos-14 cannot open.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
