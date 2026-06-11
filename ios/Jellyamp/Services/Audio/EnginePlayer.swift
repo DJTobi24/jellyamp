@@ -41,6 +41,10 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
     /// Per-track loudness multiplier (linear); combined with `masterVolume`.
     private var loudnessGain: Float = 1.0
     private var sessionActivated = false
+    /// Core state machine; ticked by the periodic time observer. Drives the
+    /// pre-stop fade and the actual stop.
+    private var sleepTimer = SleepTimer()
+    private var monotonicNow: TimeInterval { Date().timeIntervalSinceReferenceDate }
     /// True while the user/queue wants audio: lets us tell a transient
     /// buffering `.paused` apart from a deliberate pause.
     private var intendsToPlay = false
@@ -54,6 +58,7 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         self.settings = settings
         self.reporting = PlaybackReportingAPI(session: session)
         self.stateModel = stateModel
+        self.sleepTimer = SleepTimer(fadeOutDuration: settings.sleepTimerFadeOut)
         super.init()
         // Keep the default stall-avoidance on: the `/Items/{id}/File` endpoint
         // serves a proper Content-Length + byte ranges, so AVPlayer can buffer
@@ -161,6 +166,24 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         // MTAudioProcessingTap, neither of which a plain AVPlayer offers.
     }
 
+    func startSleepTimer(duration: TimeInterval?) {
+        if let duration {
+            sleepTimer.start(duration: duration, now: monotonicNow)
+            log.info("sleep timer: \(Int(duration), privacy: .public)s")
+        } else {
+            sleepTimer.startEndOfTrack()
+            log.info("sleep timer: end of track")
+        }
+        publishSleepTimer()
+    }
+
+    func cancelSleepTimer() {
+        log.info("sleep timer cancelled")
+        sleepTimer.cancel()
+        applyEffectiveVolume()
+        publishSleepTimer()
+    }
+
     // MARK: - Internals
 
     /// Builds the stream URL, swaps in a fresh item, and starts playback.
@@ -197,11 +220,31 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         sendStartReports(for: track)
     }
 
-    /// `player.volume` carries master × per-track loudness. AVPlayer clamps to
-    /// [0, 1], so loudness *boost* (gain > unity, e.g. quiet tracks) is capped
-    /// at unity for now; full boost returns with the AVAudioEngine path.
+    /// `player.volume` carries master × per-track loudness × sleep fade.
+    /// AVPlayer clamps to [0, 1], so loudness *boost* (gain > unity, e.g.
+    /// quiet tracks) is capped at unity for now; full boost returns with the
+    /// AVAudioEngine path.
     private func applyEffectiveVolume() {
-        player.volume = max(0, min(1, masterVolume * loudnessGain))
+        let fade = Float(sleepTimer.fadeGain(now: monotonicNow))
+        player.volume = max(0, min(1, masterVolume * loudnessGain * fade))
+    }
+
+    /// Called from the periodic time observer (every 0.5 s on main).
+    private func tickSleepTimer() {
+        guard sleepTimer.isActive else { return }
+        if sleepTimer.shouldStop(now: monotonicNow) {
+            log.info("sleep timer elapsed — pausing")
+            sleepTimer.cancel()
+            intendsToPlay = false
+            player.pause()
+        }
+        applyEffectiveVolume()
+        publishSleepTimer()
+    }
+
+    private func publishSleepTimer() {
+        stateModel?.sleepTimerActive = sleepTimer.isActive
+        stateModel?.sleepTimerRemaining = sleepTimer.remaining(now: monotonicNow)
     }
 
     /// Drives state from whether audio is actually playing. This is the
@@ -291,10 +334,21 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
             }
             self.currentTime = seconds
             self.stateModel?.currentTime = seconds
+            self.tickSleepTimer()
         }
     }
 
     private func trackFinished() {
+        if case .endOfTrack = sleepTimer.mode {
+            log.info("sleep timer: end of track reached — stopping")
+            sleepTimer.cancel()
+            intendsToPlay = false
+            publishSleepTimer()
+            applyEffectiveVolume()
+            publish(state: .idle, track: nil)
+            stateModel?.upNext = []
+            return
+        }
         guard let next = queue.advance() else {
             intendsToPlay = false
             publish(state: .idle, track: nil)
