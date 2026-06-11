@@ -24,6 +24,13 @@ struct NowPlayingView: View {
                             .lineLimit(1)
                     }
                 }
+                if let errorMessage = playerState.errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
                 PlayerControlsView(playerState: playerState)
                 Spacer()
             }
@@ -84,10 +91,13 @@ struct PlayerControlsView: View {
     }
 }
 
-/// Observable bridge between `PlayerEngine` state and SwiftUI.
-@MainActor
+/// Observable bridge between `PlayerEngine` state and SwiftUI. A single
+/// instance lives in `DependencyContainer` and is fed by `EnginePlayer`
+/// (always on the main thread) and injected into the player views.
 final class PlayerStateModel: ObservableObject {
     @Published var currentTrack: Track?
     @Published var isPlaying = false
     @Published var currentTime: TimeInterval = 0
+    /// Non-nil when the current track failed to start; surfaced in the UI.
+    @Published var errorMessage: String?
 }

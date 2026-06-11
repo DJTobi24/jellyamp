@@ -4,7 +4,7 @@ import JellyampCore
 /// Persistent bottom bar above the tab bar; tap to expand into NowPlayingView.
 struct MiniPlayerView: View {
     @EnvironmentObject private var container: DependencyContainer
-    @StateObject private var playerState = PlayerStateModel()
+    @EnvironmentObject private var playerState: PlayerStateModel
     @State private var showNowPlaying = false
 
     var body: some View {
@@ -18,10 +18,17 @@ struct MiniPlayerView: View {
                         Text(track.title)
                             .font(.callout)
                             .lineLimit(1)
-                        Text(track.artistName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        if let errorMessage = playerState.errorMessage {
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .lineLimit(1)
+                        } else {
+                            Text(track.artistName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                     Spacer()
                     Button {

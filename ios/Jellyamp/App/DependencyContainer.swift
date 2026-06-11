@@ -15,6 +15,9 @@ final class DependencyContainer: ObservableObject {
     private(set) var library: MusicLibraryProviding?
     private(set) var sonic: SonicProviding?
     private(set) var player: PlayerEngine?
+    /// Single shared bridge the player views observe; the active `EnginePlayer`
+    /// pushes state into it. Lives for the whole app session.
+    let playerState = PlayerStateModel()
 
     private let credentialStore = KeychainCredentialStore()
     private let settingsStore = UserDefaultsSettingsStore()
@@ -49,7 +52,7 @@ final class DependencyContainer: ObservableObject {
     private func activate(session: JellyfinSession) async {
         self.session = session
         library = MusicLibraryAPI(session: session)
-        player = EnginePlayer(session: session, settings: settings)
+        player = EnginePlayer(session: session, settings: settings, stateModel: playerState)
         await rewireSonicProvider()
     }
 
