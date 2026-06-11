@@ -133,14 +133,14 @@ final class StreamURLBuilderTests: XCTestCase {
     }
 
     func testDirectPlayURL() {
+        // Direct play streams the raw original file (Finamp's approach): no
+        // transcode flags, byte-seekable, correct Content-Type for AVPlayer.
         let url = StreamURLBuilder.url(for: "track1", request: .directPlay, session: testSession)
-        XCTAssertTrue(url.path.hasSuffix("/Audio/track1/universal"))
+        XCTAssertTrue(url.path.hasSuffix("/Items/track1/File"))
         let query = queryItems(of: url)
-        XCTAssertEqual(query["static"], "true")
-        XCTAssertEqual(query["userId"], "user-1")
-        XCTAssertEqual(query["deviceId"], "device-1")
         XCTAssertEqual(query["api_key"], "token-abc-123")
-        XCTAssertNotNil(query["playSessionId"])
+        XCTAssertNil(query["static"])
+        XCTAssertNil(query["transcodingProtocol"])
     }
 
     func testTranscodeURL() {
@@ -149,12 +149,12 @@ final class StreamURLBuilderTests: XCTestCase {
             request: .transcode(codec: "aac", container: "ts", maxBitrate: 320_000),
             session: testSession
         )
+        XCTAssertTrue(url.path.hasSuffix("/Audio/track1/main.m3u8"), "AVPlayer needs the HLS transcode path")
         let query = queryItems(of: url)
-        XCTAssertNil(query["static"])
         XCTAssertEqual(query["audioCodec"], "aac")
-        XCTAssertEqual(query["transcodingContainer"], "ts")
-        XCTAssertEqual(query["transcodingProtocol"], "hls", "AVPlayer needs the HLS transcode path")
-        XCTAssertEqual(query["maxStreamingBitrate"], "320000")
+        XCTAssertEqual(query["audioBitRate"], "320000")
+        XCTAssertEqual(query["api_key"], "token-abc-123")
+        XCTAssertNotNil(query["playSessionId"])
     }
 
     func testSeekAddsStartTimeTicksOnce() {

@@ -12,6 +12,7 @@ public protocol MusicLibraryProviding: Sendable {
     func tracks(inAlbum albumID: String) async throws -> [Track]
     func artists(startIndex: Int, limit: Int) async throws -> [Artist]
     func albums(byArtist artistID: String) async throws -> [Album]
+    func tracks(byArtist artistID: String) async throws -> [Track]
     func genres() async throws -> [Genre]
     func playlists() async throws -> [Playlist]
     func tracks(inPlaylist playlistID: String) async throws -> [Track]
@@ -82,6 +83,19 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "sortBy", value: "ProductionYear,SortName"),
         ])
         return response.Items.map(DTOMapper.album(from:))
+    }
+
+    /// All tracks crediting this artist. Uses `artistIds` (any credit, not just
+    /// album-artist) so artists whose songs aren't grouped into `MusicAlbum`
+    /// items still surface their tracks.
+    public func tracks(byArtist artistID: String) async throws -> [Track] {
+        let response = try await items(query: [
+            URLQueryItem(name: "artistIds", value: artistID),
+            URLQueryItem(name: "includeItemTypes", value: "Audio"),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "Album,ParentIndexNumber,IndexNumber"),
+        ])
+        return response.Items.map(DTOMapper.track(from:))
     }
 
     public func genres() async throws -> [Genre] {

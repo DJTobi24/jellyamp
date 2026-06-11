@@ -42,6 +42,7 @@ struct HomeView: View {
                                 TrackCard(track: track)
                             }
                             .buttonStyle(.plain)
+                            .trackContextActions(track)
                         }
                     }
                 }

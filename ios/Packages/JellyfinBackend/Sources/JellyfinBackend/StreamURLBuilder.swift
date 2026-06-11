@@ -1,40 +1,51 @@
 import Foundation
 import JellyampCore
 
-/// Builds `/Audio/{id}/universal` URLs from a `StreamRequest` decision.
-/// Pure function of session + request → URL, fully unit-tested.
+/// Builds Jellyfin audio stream URLs from a `StreamRequest` decision, mirroring
+/// the approach Finamp uses (it drives the same `AVPlayer` under the hood):
+/// direct play streams the raw original file, transcoding goes over HLS. Pure
+/// function of session + request → URL, fully unit-tested.
 public enum StreamURLBuilder {
-    /// Containers/codecs we tell the server we accept for direct streaming.
-    static let acceptedContainers = "opus,webm|opus,mp3,aac,m4a|aac,m4b|aac,flac,webma,webm|webma,wav,ogg"
-
     public static func url(for trackID: String, request: StreamRequest, session: JellyfinSession) -> URL {
-        var query: [URLQueryItem] = [
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
-            URLQueryItem(name: "deviceId", value: session.deviceID),
-            URLQueryItem(name: "api_key", value: session.accessToken ?? ""),
-            URLQueryItem(name: "playSessionId", value: UUID().uuidString),
-        ]
         switch request {
         case .directPlay:
-            query.append(URLQueryItem(name: "static", value: "true"))
-        case .transcode(let codec, let container, let maxBitrate):
-            query.append(contentsOf: [
-                URLQueryItem(name: "container", value: acceptedContainers),
-                URLQueryItem(name: "transcodingContainer", value: container),
-                // HLS is the transcode path AVPlayer handles reliably (and
-                // what jellyfin-web/Finamp request); progressive HTTP m4a
-                // stalls because the moov atom arrives last.
-                URLQueryItem(name: "transcodingProtocol", value: "hls"),
-                URLQueryItem(name: "audioCodec", value: codec),
-                URLQueryItem(name: "maxStreamingBitrate", value: String(maxBitrate)),
-                URLQueryItem(name: "enableRedirection", value: "true"),
-            ])
+            return directFileURL(for: trackID, session: session)
+        case .transcode(let codec, _, let maxBitrate):
+            return hlsURL(for: trackID, codec: codec, maxBitrate: maxBitrate, session: session)
         }
+    }
+
+    /// Raw original file (`/Items/{id}/File`): byte-range seekable and served
+    /// with a correct `Content-Type`, so `AVPlayer` resolves it immediately.
+    /// `/Audio/{id}/universal` could transcode and is not byte-seekable, which
+    /// leaves AVPlayer stuck "waiting to minimize stalls" behind a proxy.
+    private static func directFileURL(for trackID: String, session: JellyfinSession) -> URL {
         var components = URLComponents(
-            url: session.serverURL.appendingPathComponent("Audio/\(trackID)/universal"),
+            url: session.serverURL.appendingPathComponent("Items/\(trackID)/File"),
             resolvingAgainstBaseURL: false
         )!
-        components.queryItems = query
+        components.queryItems = [URLQueryItem(name: "api_key", value: session.accessToken ?? "")]
+        return components.url!
+    }
+
+    /// HLS transcode (`/Audio/{id}/main.m3u8`): AVPlayer plays `.m3u8` natively
+    /// (adaptive + seekable), unlike a progressive transcode it can neither
+    /// reliably buffer nor seek.
+    private static func hlsURL(for trackID: String, codec: String, maxBitrate: Int, session: JellyfinSession) -> URL {
+        var components = URLComponents(
+            url: session.serverURL.appendingPathComponent("Audio/\(trackID)/main.m3u8"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: session.accessToken ?? ""),
+            URLQueryItem(name: "deviceId", value: session.deviceID),
+            URLQueryItem(name: "playSessionId", value: UUID().uuidString),
+            URLQueryItem(name: "audioCodec", value: codec),
+            URLQueryItem(name: "audioSampleRate", value: "44100"),
+            URLQueryItem(name: "maxAudioBitDepth", value: "16"),
+            URLQueryItem(name: "audioBitRate", value: String(maxBitrate)),
+            URLQueryItem(name: "maxAudioChannels", value: "2"),
+        ]
         return components.url!
     }
 

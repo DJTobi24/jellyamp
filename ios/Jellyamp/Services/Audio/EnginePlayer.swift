@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import OSLog
 import JellyampCore
 import JellyfinBackend
 
@@ -8,6 +9,10 @@ import JellyfinBackend
 /// which lets the server transcode anything the device can't decode (Opus,
 /// Ogg, …) and avoids the full-file-download + `AVAudioFile` open that the
 /// old `AVAudioEngine` scaffold needed (see ADR-0002).
+///
+/// Playback state is driven by `AVPlayer.timeControlStatus` (the source of
+/// truth for "is sound actually coming out"), not by the brittle item-status
+/// dance; `currentItem.status == .failed` is used only to surface errors.
 ///
 /// Native gapless joins / crossfades and a graphic EQ are not available on a
 /// plain `AVPlayer`; those return on an `AVAudioEngine` path in a later phase.
@@ -27,13 +32,22 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
     /// main thread (every callback below is delivered on `.main`).
     private weak var stateModel: PlayerStateModel?
 
-    private var statusObserver: AnyCancellable?
+    private var itemStatusObserver: AnyCancellable?
+    private var timeControlObserver: AnyCancellable?
     private var endObserver: NSObjectProtocol?
     private var timeObserver: Any?
+
     private var masterVolume: Float = 1.0
     /// Per-track loudness multiplier (linear); combined with `masterVolume`.
     private var loudnessGain: Float = 1.0
     private var sessionActivated = false
+    /// True while the user/queue wants audio: lets us tell a transient
+    /// buffering `.paused` apart from a deliberate pause.
+    private var intendsToPlay = false
+    /// One-shot guard so we log the first real time advance only once.
+    private var loggedFirstTick = false
+
+    private let log = Logger(subsystem: "dev.djtobi.Jellyamp", category: "Playback")
 
     init(session: JellyfinSession, settings: AppSettings, stateModel: PlayerStateModel) {
         self.session = session
@@ -41,8 +55,15 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         self.reporting = PlaybackReportingAPI(session: session)
         self.stateModel = stateModel
         super.init()
+        // Keep the default stall-avoidance on: the `/Items/{id}/File` endpoint
+        // serves a proper Content-Length + byte ranges, so AVPlayer can buffer
+        // ahead and play smoothly with an advancing clock. (Disabling it makes
+        // the player report `.playing` while still starved, so time appears
+        // stuck — which is exactly the bad behaviour we saw.)
         player.automaticallyWaitsToMinimizeStalling = true
+        observePlayer()
         addPeriodicTimeObserver()
+        log.info("EnginePlayer init: server=\(session.serverURL.absoluteString, privacy: .public) userID=\(session.userID ?? "nil", privacy: .public) hasToken=\(session.accessToken != nil, privacy: .public)")
     }
 
     deinit {
@@ -53,46 +74,86 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
     // MARK: - PlayerEngine
 
     func load(queue: PlayQueue) {
+        log.info("load(queue): count=\(queue.upNext.count + 1, privacy: .public) current=\(queue.currentTrack?.title ?? "nil", privacy: .public)")
         self.queue = queue
-        guard let track = queue.currentTrack else { return }
+        guard let track = queue.currentTrack else {
+            log.error("load(queue): queue has no current track")
+            return
+        }
         startPlayback(of: track)
     }
 
     func play() {
-        guard case .paused(let trackID) = state else { return }
+        log.info("play() tapped — state=\(self.describe(self.state), privacy: .public) rate=\(self.player.rate, privacy: .public)")
+        intendsToPlay = true
         activateSessionIfNeeded()
         player.play()
-        publish(state: .playing(trackID: trackID), track: queue.currentTrack)
     }
 
     func pause() {
-        guard case .playing(let trackID) = state else { return }
+        log.info("pause() tapped — state=\(self.describe(self.state), privacy: .public)")
+        intendsToPlay = false
         player.pause()
-        publish(state: .paused(trackID: trackID), track: queue.currentTrack)
     }
 
     func seek(to time: TimeInterval) {
+        log.info("seek(to: \(time, privacy: .public))")
         // Direct-play (`static=true`) streams are byte-seekable, so AVPlayer
         // can seek in place. Seeking a live transcode (re-request with
         // `startTimeTicks`) is a follow-up.
         player.seek(to: CMTime(seconds: time, preferredTimescale: 600))
+        // Don't write the @Published time here: this runs inside the slider's
+        // edit-changed callback, and mutating shared state mid-update trips
+        // SwiftUI's "modifying state during view update" warning. The periodic
+        // time observer fires on the seek's time-jump and syncs it safely.
         currentTime = time
-        stateModel?.currentTime = time
     }
 
     func skipToNext() {
         guard let next = queue.skipToNext() else { return }
+        log.info("skipToNext → \(next.title, privacy: .public)")
         startPlayback(of: next)
     }
 
     func skipToPrevious() {
         guard let previous = queue.skipToPrevious() else { return }
+        log.info("skipToPrevious → \(previous.title, privacy: .public)")
         startPlayback(of: previous)
     }
 
     func setVolume(_ volume: Double) {
         masterVolume = Float(volume)
         applyEffectiveVolume()
+    }
+
+    func enqueue(_ tracks: [Track]) {
+        log.info("enqueue \(tracks.count, privacy: .public) track(s)")
+        let wasIdle = queue.currentTrack == nil
+        queue.append(tracks)
+        publishQueue()
+        if wasIdle, let track = queue.currentTrack { startPlayback(of: track) }
+    }
+
+    func playNext(_ tracks: [Track]) {
+        log.info("playNext \(tracks.count, privacy: .public) track(s)")
+        let wasIdle = queue.currentTrack == nil
+        queue.insertNext(tracks)
+        publishQueue()
+        if wasIdle, let track = queue.currentTrack { startPlayback(of: track) }
+    }
+
+    func playUpNext(at upNextIndex: Int) {
+        let absolute = (queue.currentIndex ?? -1) + 1 + upNextIndex
+        queue.jump(to: absolute)
+        guard let track = queue.currentTrack else { return }
+        log.info("playUpNext[\(upNextIndex, privacy: .public)] → \(track.title, privacy: .public)")
+        startPlayback(of: track)
+    }
+
+    func removeUpNext(at upNextIndex: Int) {
+        let absolute = (queue.currentIndex ?? -1) + 1 + upNextIndex
+        queue.remove(at: absolute)
+        publishQueue()
     }
 
     func apply(eqPreset: EQPreset) {
@@ -105,11 +166,20 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
     /// Builds the stream URL, swaps in a fresh item, and starts playback.
     /// Always called on the main thread (load / skip / track-finished).
     private func startPlayback(of track: Track) {
+        intendsToPlay = true
+        loggedFirstTick = false
         activateSessionIfNeeded()
 
         let profile = settings.playbackProfile.profile
         let request = profile.request(for: track, network: .wifi)
         let url = StreamURLBuilder.url(for: track.id, request: request, session: session)
+
+        log.info("""
+        startPlayback: "\(track.title, privacy: .public)" id=\(track.id, privacy: .public) \
+        codec=\(track.codec ?? "nil", privacy: .public) container=\(track.container ?? "nil", privacy: .public) \
+        bitrate=\(track.bitrate ?? -1, privacy: .public) request=\(self.describe(request), privacy: .public)
+        """)
+        log.info("stream URL: \(url.absoluteString, privacy: .public)")
 
         let item = AVPlayerItem(url: url)
         observe(item: item, track: track)
@@ -121,6 +191,7 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         player.replaceCurrentItem(with: item)
         applyEffectiveVolume()
         publish(state: .loading(trackID: track.id), track: track)
+        publishQueue()
         player.play()
 
         sendStartReports(for: track)
@@ -133,21 +204,66 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         player.volume = max(0, min(1, masterVolume * loudnessGain))
     }
 
-    /// KVO on item status (ready → playing, error → failed) plus end-of-item.
+    /// Drives state from whether audio is actually playing. This is the
+    /// reliable signal — item.status alone leaves the player stuck "loading".
+    private func observePlayer() {
+        timeControlObserver = player.publisher(for: \.timeControlStatus)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                self?.handleTimeControl(status)
+            }
+    }
+
+    private func handleTimeControl(_ status: AVPlayer.TimeControlStatus) {
+        guard let track = queue.currentTrack else { return }
+        switch status {
+        case .playing:
+            log.info("timeControlStatus = playing")
+            publish(state: .playing(trackID: track.id), track: track)
+        case .waitingToPlayAtSpecifiedRate:
+            let reason = player.reasonForWaitingToPlay?.rawValue ?? "nil"
+            log.info("timeControlStatus = waiting (reason=\(reason, privacy: .public))")
+            publish(state: .loading(trackID: track.id), track: track)
+        case .paused:
+            if case .failed = state { return }
+            if intendsToPlay {
+                log.info("timeControlStatus = paused but intendsToPlay → loading")
+                publish(state: .loading(trackID: track.id), track: track)
+            } else {
+                log.info("timeControlStatus = paused (user)")
+                publish(state: .paused(trackID: track.id), track: track)
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    /// Surfaces a failed item and handles end-of-track.
     private func observe(item: AVPlayerItem, track: Track) {
-        statusObserver = item.publisher(for: \.status)
+        itemStatusObserver = item.publisher(for: \.status)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] status in
                 guard let self else { return }
                 switch status {
-                case .readyToPlay:
-                    if case .loading = self.state {
-                        self.publish(state: .playing(trackID: track.id), track: track)
-                    }
                 case .failed:
-                    let message = item.error?.localizedDescription ?? "Playback failed."
-                    self.publish(state: .failed(trackID: track.id, message: message), track: track)
-                default:
+                    let error = item.error
+                    let comment = item.errorLog()?.events.last?.errorComment
+                    self.log.error("""
+                    item.status = FAILED — \(error?.localizedDescription ?? "unknown", privacy: .public) \
+                    (\((error as NSError?)?.domain ?? "?", privacy: .public) \
+                    code=\((error as NSError?)?.code ?? 0, privacy: .public)) \
+                    errorLog=\(comment ?? "nil", privacy: .public)
+                    """)
+                    self.intendsToPlay = false
+                    self.publish(
+                        state: .failed(trackID: track.id, message: error?.localizedDescription ?? "Playback failed."),
+                        track: track
+                    )
+                case .readyToPlay:
+                    self.log.info("item.status = readyToPlay (duration=\(item.duration.seconds, privacy: .public)s)")
+                case .unknown:
+                    self.log.debug("item.status = unknown")
+                @unknown default:
                     break
                 }
             }
@@ -158,6 +274,7 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
             object: item,
             queue: .main
         ) { [weak self] _ in
+            self?.log.info("item reached end")
             self?.trackFinished()
         }
     }
@@ -168,6 +285,10 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
             guard let self else { return }
             let seconds = time.seconds
             guard seconds.isFinite else { return }
+            if !self.loggedFirstTick, seconds > 0 {
+                self.loggedFirstTick = true
+                self.log.info("playback advancing — first tick at \(seconds, privacy: .public)s")
+            }
             self.currentTime = seconds
             self.stateModel?.currentTime = seconds
         }
@@ -175,7 +296,9 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
 
     private func trackFinished() {
         guard let next = queue.advance() else {
+            intendsToPlay = false
             publish(state: .idle, track: nil)
+            stateModel?.upNext = []
             return
         }
         startPlayback(of: next)
@@ -191,12 +314,25 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
 
     private func activateSessionIfNeeded() {
         guard !sessionActivated else { return }
-        try? AVAudioSession.sharedInstance().setActive(true)
-        sessionActivated = true
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+            sessionActivated = true
+            log.info("AVAudioSession activated (category=\(AVAudioSession.sharedInstance().category.rawValue, privacy: .public))")
+        } catch {
+            log.error("AVAudioSession.setActive failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Mirrors the upcoming queue into the view model for the Up Next list.
+    private func publishQueue() {
+        stateModel?.upNext = queue.upNext
     }
 
     /// Single point that mutates published state — must run on the main thread.
     private func publish(state newState: PlaybackState, track: Track?) {
+        if newState != state {
+            log.debug("state: \(self.describe(self.state), privacy: .public) → \(self.describe(newState), privacy: .public)")
+        }
         state = newState
         stateModel?.currentTrack = track
         if case .playing = newState {
@@ -208,6 +344,25 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
             stateModel?.errorMessage = message
         } else {
             stateModel?.errorMessage = nil
+        }
+    }
+
+    // MARK: - Logging helpers
+
+    private func describe(_ state: PlaybackState) -> String {
+        switch state {
+        case .idle: return "idle"
+        case .loading(let id): return "loading(\(id))"
+        case .playing(let id): return "playing(\(id))"
+        case .paused(let id): return "paused(\(id))"
+        case .failed(_, let message): return "failed(\(message))"
+        }
+    }
+
+    private func describe(_ request: StreamRequest) -> String {
+        switch request {
+        case .directPlay: return "directPlay"
+        case .transcode(let codec, let container, let bitrate): return "transcode(\(codec)/\(container)@\(bitrate))"
         }
     }
 }
