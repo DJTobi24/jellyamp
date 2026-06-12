@@ -8,6 +8,64 @@ extension View {
     func trackContextActions(_ track: Track) -> some View {
         modifier(TrackContextActions(track: track))
     }
+
+    /// Long-press menu for an album cover (Play / Shuffle / Add to Queue).
+    func albumContextActions(_ album: Album) -> some View {
+        modifier(AlbumContextActions(album: album))
+    }
+
+    /// Long-press menu for an artist row (Play / Shuffle / Add to Queue).
+    func artistContextActions(_ artist: Artist) -> some View {
+        modifier(ArtistContextActions(artist: artist))
+    }
+}
+
+private struct AlbumContextActions: ViewModifier {
+    @EnvironmentObject private var container: DependencyContainer
+    let album: Album
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            CollectionActionButtons { try await container.library?.tracks(inAlbum: album.id) ?? [] }
+        }
+    }
+}
+
+private struct ArtistContextActions: ViewModifier {
+    @EnvironmentObject private var container: DependencyContainer
+    let artist: Artist
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            CollectionActionButtons { try await container.library?.tracks(byArtist: artist.id) ?? [] }
+        }
+    }
+}
+
+/// Play / Shuffle / Add-to-Queue for a lazily-fetched set of tracks (album,
+/// artist, …). The tracks are fetched only when an action is chosen.
+private struct CollectionActionButtons: View {
+    @EnvironmentObject private var container: DependencyContainer
+    let tracks: () async throws -> [Track]
+
+    var body: some View {
+        Button {
+            run { container.player?.load(queue: PlayQueue(tracks: $0)) }
+        } label: { Label("Play", systemImage: "play.fill") }
+        Button {
+            run { container.player?.playShuffled($0) }
+        } label: { Label("Shuffle", systemImage: "shuffle") }
+        Button {
+            run { container.player?.enqueue($0) }
+        } label: { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+    }
+
+    private func run(_ action: @escaping ([Track]) -> Void) {
+        Task {
+            guard let tracks = try? await tracks(), !tracks.isEmpty else { return }
+            action(tracks)
+        }
+    }
 }
 
 private struct TrackContextActions: ViewModifier {

@@ -44,6 +44,7 @@ struct AlbumsGridView: View {
                         AlbumCard(album: album)
                     }
                     .buttonStyle(.plain)
+                    .albumContextActions(album)
                     .onAppear {
                         // Reached the last loaded card → pull the next page.
                         if album.id == albums.last?.id { Task { await loadMore() } }
@@ -176,6 +177,7 @@ struct ArtistsView: View {
                         Text(artist.name)
                     }
                 }
+                .artistContextActions(artist)
                 .onAppear {
                     if artist.id == artists.last?.id { Task { await loadMore() } }
                 }
@@ -248,6 +250,7 @@ struct ArtistDetailView: View {
                                     AlbumCard(album: album).frame(width: 150)
                                 }
                                 .buttonStyle(.plain)
+                                .albumContextActions(album)
                             }
                         }
                         .padding(.vertical, 4)

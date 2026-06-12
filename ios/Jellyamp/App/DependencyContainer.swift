@@ -25,6 +25,13 @@ final class DependencyContainer: ObservableObject {
     /// pushes state into it. Lives for the whole app session.
     let playerState = PlayerStateModel()
 
+    /// Autoplay ("radio"): when the queue runs low, append similar tracks.
+    var autoplayEnabled = true
+    private let radioFeeder = RadioQueueFeeder()
+    private var playHistory: [String] = []
+    private var isRefillingRadio = false
+    private var cancellables: Set<AnyCancellable> = []
+
     private let credentialStore = KeychainCredentialStore()
     private let settingsStore = UserDefaultsSettingsStore()
 
@@ -57,6 +64,8 @@ final class DependencyContainer: ObservableObject {
         player = nil
         systemMedia = nil
         libraryCache = nil
+        cancellables.removeAll()
+        playHistory = []
     }
 
     private func activate(session: JellyfinSession) async {
@@ -66,7 +75,49 @@ final class DependencyContainer: ObservableObject {
         let engine = EnginePlayer(session: session, settings: settings, stateModel: playerState)
         player = engine
         systemMedia = SystemMediaController(player: engine, playerState: playerState, session: session)
+        setupAutoplay()
         await rewireSonicProvider()
+    }
+
+    // MARK: - Autoplay / radio
+
+    /// Watches the playing track; records history and tops up the queue with
+    /// similar tracks when it runs low, so playback never just stops.
+    private func setupAutoplay() {
+        cancellables.removeAll()
+        playHistory = []
+        playerState.$currentTrack
+            .map { $0?.id }
+            .removeDuplicates()
+            .sink { [weak self] id in
+                guard let id else { return }
+                Task { @MainActor in self?.handleTrackChanged(to: id) }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func handleTrackChanged(to trackID: String) {
+        playHistory.append(trackID)
+        if playHistory.count > 200 { playHistory.removeFirst(playHistory.count - 200) }
+        maybeRefillRadio()
+    }
+
+    private func maybeRefillRadio() {
+        guard autoplayEnabled, !isRefillingRadio,
+              radioFeeder.needsRefill(remaining: playerState.upNext.count),
+              let seed = playerState.currentTrack?.id,
+              let sonic, let library, let player else { return }
+        isRefillingRadio = true
+        Task {
+            defer { isRefillingRadio = false }
+            guard let similar = try? await sonic.similarTracks(to: seed, limit: radioFeeder.batchSize * 3) else { return }
+            let candidates = (try? await library.tracks(byIDs: similar.map(\.itemID))) ?? []
+            var queuedIDs = playerState.upNext.map(\.id)
+            if let current = playerState.currentTrack?.id { queuedIDs.append(current) }
+            let fresh = radioFeeder.selectTracks(from: candidates, queuedIDs: queuedIDs, historyIDs: playHistory)
+            guard !fresh.isEmpty else { return }
+            player.enqueue(fresh)
+        }
     }
 
     /// Picks jellyamp-server when configured and healthy, else the

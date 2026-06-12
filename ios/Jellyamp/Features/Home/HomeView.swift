@@ -32,6 +32,7 @@ struct HomeView: View {
                                 AlbumCard(album: album)
                             }
                             .buttonStyle(.plain)
+                            .albumContextActions(album)
                         }
                     }
                     shelf(title: "Recently Played") {

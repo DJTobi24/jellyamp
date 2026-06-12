@@ -17,6 +17,7 @@ struct SearchView: View {
                             NavigationLink(destination: ArtistDetailView(artist: artist)) {
                                 Text(artist.name)
                             }
+                            .artistContextActions(artist)
                         }
                     }
                 }
@@ -34,6 +35,7 @@ struct SearchView: View {
                                     }
                                 }
                             }
+                            .albumContextActions(album)
                         }
                     }
                 }
