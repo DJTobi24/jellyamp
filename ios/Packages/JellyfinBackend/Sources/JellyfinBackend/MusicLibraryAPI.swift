@@ -14,6 +14,7 @@ public protocol MusicLibraryProviding: Sendable {
     func albums(byArtist artistID: String) async throws -> [Album]
     func tracks(byArtist artistID: String) async throws -> [Track]
     func favoriteTracks(limit: Int) async throws -> [Track]
+    func tracks(inGenre genreID: String) async throws -> [Track]
     func lyrics(forTrack trackID: String) async throws -> LyricsTimeline?
     func genres() async throws -> [Genre]
     @discardableResult
@@ -135,6 +136,17 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         guard (200..<300).contains(response.statusCode) else {
             throw JellyfinError.serverError(status: response.statusCode)
         }
+    }
+
+    /// All tracks in a music genre.
+    public func tracks(inGenre genreID: String) async throws -> [Track] {
+        let response = try await items(query: [
+            URLQueryItem(name: "genreIds", value: genreID),
+            URLQueryItem(name: "includeItemTypes", value: "Audio"),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "Album,ParentIndexNumber,IndexNumber"),
+        ])
+        return response.Items.map(DTOMapper.track(from:))
     }
 
     /// The user's favorited ("liked") tracks.

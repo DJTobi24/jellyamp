@@ -365,11 +365,74 @@ struct GenresView: View {
 
     var body: some View {
         List(genres) { genre in
-            Text(genre.name)
+            NavigationLink(destination: GenreDetailView(genre: genre)) {
+                Text(genre.name)
+            }
         }
         .navigationTitle("Genres")
         .task {
             genres = (try? await container.library?.genres()) ?? []
+        }
+    }
+}
+
+struct GenreDetailView: View {
+    @EnvironmentObject private var container: DependencyContainer
+    let genre: Genre
+    @State private var tracks: [Track] = []
+    @State private var loaded = false
+
+    var body: some View {
+        List {
+            if !tracks.isEmpty {
+                HStack {
+                    Button {
+                        container.player?.load(queue: PlayQueue(tracks: tracks, startAt: 0))
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                            .foregroundStyle(.black)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button {
+                        container.player?.playShuffled(tracks)
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .listRowSeparator(.hidden)
+            }
+            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                HStack(spacing: 8) {
+                    ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 40)
+                    VStack(alignment: .leading) {
+                        Text(track.title).lineLimit(1)
+                        Text(track.artistName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    TrackMenuButton(track: track)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    container.player?.load(queue: PlayQueue(tracks: tracks, startAt: index))
+                }
+                .trackContextActions(track)
+            }
+            if loaded, tracks.isEmpty {
+                Text("No tracks in this genre.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle(genre.name)
+        .task {
+            tracks = (try? await container.library?.tracks(inGenre: genre.id)) ?? []
+            loaded = true
         }
     }
 }
