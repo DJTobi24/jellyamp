@@ -419,17 +419,18 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
     /// can't start, fall back to a cached download and read that locally.
     /// Offline downloads play straight from the local file.
     private func makeSource(for track: Track, startTime: TimeInterval) async -> StreamingAudioSource? {
+        let duration = track.duration
         if let offline = DownloadStore.localURL(for: track) {
-            return await StreamingAudioSource.make(url: offline, startTime: startTime)
+            return await StreamingAudioSource.make(url: offline, startTime: startTime, duration: duration)
         }
         let request = settings.playbackProfile.profile.request(for: track, network: .wifi)
         let remote = StreamURLBuilder.url(for: track.id, request: request, session: session)
-        if let streamed = await StreamingAudioSource.make(url: remote, startTime: startTime) {
+        if let streamed = await StreamingAudioSource.make(url: remote, startTime: startTime, duration: duration) {
             return streamed
         }
         log.info("progressive read unavailable; falling back to cached download for \(track.title, privacy: .public)")
         guard let cached = try? await cache.localFile(for: track.id, remoteURL: remote) else { return nil }
-        return await StreamingAudioSource.make(url: cached, startTime: startTime)
+        return await StreamingAudioSource.make(url: cached, startTime: startTime, duration: duration)
     }
 
     private func bumpStartGeneration() -> Int { startGeneration += 1; return startGeneration }
