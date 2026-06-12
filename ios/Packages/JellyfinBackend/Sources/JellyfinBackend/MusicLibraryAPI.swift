@@ -155,9 +155,11 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     public func genres() async throws -> [Genre] {
-        let request = session.request(path: "Genres", query: [
-            URLQueryItem(name: "includeItemTypes", value: "Audio"),
+        // `/MusicGenres` is the music-specific endpoint; the generic `/Genres`
+        // with includeItemTypes=Audio returns nothing on Jellyfin.
+        let request = session.request(path: "MusicGenres", query: [
             URLQueryItem(name: "userId", value: session.userID ?? ""),
+            URLQueryItem(name: "sortBy", value: "SortName"),
         ])
         let response: ItemsResponse = try await execute(request)
         return response.Items.map { Genre(id: $0.Id, name: $0.Name ?? "") }

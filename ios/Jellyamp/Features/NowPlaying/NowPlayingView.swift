@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import MediaPlayer
 import JellyampCore
 
 /// Plexamp signature look: huge artwork over a blurred-art background, with
@@ -12,7 +13,6 @@ struct NowPlayingView: View {
     @State private var showQueue = false
     @State private var showLyrics = false
     @State private var isFavorite = false
-    @State private var volume: Double = 1.0
 
     var body: some View {
         ZStack {
@@ -39,14 +39,9 @@ struct NowPlayingView: View {
                     Image(systemName: "speaker.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Slider(
-                        value: Binding(
-                            get: { volume },
-                            set: { volume = $0; container.player?.setVolume($0) }
-                        ),
-                        in: 0...1
-                    )
-                    .tint(.white)
+                    // System/output volume — also controls the AirPlay device.
+                    SystemVolumeSlider()
+                        .frame(height: 28)
                     Image(systemName: "speaker.wave.3.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -424,6 +419,22 @@ struct PlayerControlsView: View {
         .padding(.vertical, 12)
         .glassCapsule()
     }
+}
+
+/// System output-volume slider (`MPVolumeView`). Unlike `AVPlayer.volume`,
+/// this controls the actual route volume, so it also works over AirPlay.
+/// Note: it's inert in the Simulator (no audio hardware).
+struct SystemVolumeSlider: UIViewRepresentable {
+    func makeUIView(context: Context) -> MPVolumeView {
+        let view = MPVolumeView(frame: .zero)
+        view.tintColor = .white
+        if let slider = view.subviews.compactMap({ $0 as? UISlider }).first {
+            slider.minimumTrackTintColor = .white
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: MPVolumeView, context: Context) {}
 }
 
 /// System AirPlay route picker (speakers, AirPods, Apple TV, …).
