@@ -11,8 +11,12 @@ public protocol MusicLibraryProviding: Sendable {
     func album(id: String) async throws -> Album?
     func tracks(inAlbum albumID: String) async throws -> [Track]
     func artists(startIndex: Int, limit: Int) async throws -> [Artist]
+    func artist(id: String) async throws -> Artist?
     func albums(byArtist artistID: String) async throws -> [Album]
+    func appearsOnAlbums(artistID: String) async throws -> [Album]
     func tracks(byArtist artistID: String) async throws -> [Track]
+    func topTracks(byArtist artistID: String, limit: Int) async throws -> [Track]
+    func similarArtists(artistID: String, limit: Int) async throws -> [Artist]
     func favoriteTracks(limit: Int) async throws -> [Track]
     func favoriteAlbums(limit: Int) async throws -> [Album]
     func favoriteArtists(limit: Int) async throws -> [Artist]
@@ -31,7 +35,7 @@ public protocol MusicLibraryProviding: Sendable {
     func setPlaylistImage(playlistID: String, jpeg: Data) async throws
     func recentlyAddedAlbums(limit: Int) async throws -> [Album]
     func recentlyPlayedTracks(limit: Int) async throws -> [Track]
-    func search(query: String, limit: Int) async throws -> (tracks: [Track], albums: [Album], artists: [Artist])
+    func search(query: String, limit: Int) async throws -> (tracks: [Track], albums: [Album], artists: [Artist], playlists: [Playlist])
     func tracks(byIDs ids: [String]) async throws -> [Track]
     func setFavorite(itemID: String, isFavorite: Bool) async throws
 }
@@ -88,14 +92,59 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         return response.Items.map(DTOMapper.artist(from:))
     }
 
+    /// Full artist item including the biography (`Overview`), which the list
+    /// endpoints don't return.
+    public func artist(id: String) async throws -> Artist? {
+        let response = try await items(query: [URLQueryItem(name: "ids", value: id)])
+        return response.Items.first.map(DTOMapper.artist(from:))
+    }
+
     public func albums(byArtist artistID: String) async throws -> [Album] {
         let response = try await items(query: [
             URLQueryItem(name: "albumArtistIds", value: artistID),
             URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
             URLQueryItem(name: "recursive", value: "true"),
             URLQueryItem(name: "sortBy", value: "ProductionYear,SortName"),
+            URLQueryItem(name: "sortOrder", value: "Descending"),
         ])
         return response.Items.map(DTOMapper.album(from:))
+    }
+
+    /// Albums the artist appears on without being the album artist (guest spots,
+    /// compilations). `contributingArtistIds` minus the artist's own albums.
+    public func appearsOnAlbums(artistID: String) async throws -> [Album] {
+        let response = try await items(query: [
+            URLQueryItem(name: "contributingArtistIds", value: artistID),
+            URLQueryItem(name: "excludeArtistIds", value: artistID),
+            URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "ProductionYear,SortName"),
+            URLQueryItem(name: "sortOrder", value: "Descending"),
+        ])
+        return response.Items.map(DTOMapper.album(from:))
+    }
+
+    /// The artist's most-played tracks (Jellyfin sorts by `PlayCount`).
+    public func topTracks(byArtist artistID: String, limit: Int = 5) async throws -> [Track] {
+        let response = try await items(query: [
+            URLQueryItem(name: "artistIds", value: artistID),
+            URLQueryItem(name: "includeItemTypes", value: "Audio"),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "PlayCount,SortName"),
+            URLQueryItem(name: "sortOrder", value: "Descending"),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+        return response.Items.map(DTOMapper.track(from:))
+    }
+
+    /// Similar artists via Jellyfin's metadata similarity (`/Items/{id}/Similar`).
+    public func similarArtists(artistID: String, limit: Int = 12) async throws -> [Artist] {
+        let request = session.request(path: "Items/\(artistID)/Similar", query: [
+            URLQueryItem(name: "userId", value: session.userID ?? ""),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+        let response: ItemsResponse = try await execute(request)
+        return response.Items.map(DTOMapper.artist(from:))
     }
 
     /// All tracks crediting this artist. Uses `artistIds` (any credit, not just
@@ -308,7 +357,7 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         return response.Items.map(DTOMapper.track(from:))
     }
 
-    public func search(query: String, limit: Int = 20) async throws -> (tracks: [Track], albums: [Album], artists: [Artist]) {
+    public func search(query: String, limit: Int = 20) async throws -> (tracks: [Track], albums: [Album], artists: [Artist], playlists: [Playlist]) {
         func searchQuery(type: String) -> [URLQueryItem] {
             [
                 URLQueryItem(name: "searchTerm", value: query),
@@ -320,10 +369,20 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         let trackItems = try await items(query: searchQuery(type: "Audio"))
         let albumItems = try await items(query: searchQuery(type: "MusicAlbum"))
         let artistItems = try await items(query: searchQuery(type: "MusicArtist"))
+        let playlistItems = try await items(query: searchQuery(type: "Playlist"))
         return (
             tracks: trackItems.Items.map(DTOMapper.track(from:)),
             albums: albumItems.Items.map(DTOMapper.album(from:)),
-            artists: artistItems.Items.map(DTOMapper.artist(from:))
+            artists: artistItems.Items.map(DTOMapper.artist(from:)),
+            playlists: playlistItems.Items.map {
+                Playlist(
+                    id: $0.Id,
+                    name: $0.Name ?? "",
+                    trackCount: $0.ChildCount,
+                    duration: $0.RunTimeTicks.map { Double($0) / 10_000_000 },
+                    imageTag: $0.ImageTags?["Primary"]
+                )
+            }
         )
     }
 

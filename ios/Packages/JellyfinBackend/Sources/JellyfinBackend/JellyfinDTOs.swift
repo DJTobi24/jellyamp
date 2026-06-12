@@ -36,6 +36,7 @@ struct BaseItemDto: Codable {
     var ImageTags: [String: String]?
     var AlbumPrimaryImageTag: String?
     var ChildCount: Int?
+    var Overview: String?
 
     struct NameID: Codable {
         var Name: String?
@@ -106,7 +107,8 @@ enum DTOMapper {
             name: dto.Name ?? "",
             genres: dto.Genres ?? [],
             isFavorite: dto.UserData?.IsFavorite ?? false,
-            imageTag: dto.ImageTags?["Primary"]
+            imageTag: dto.ImageTags?["Primary"],
+            overview: dto.Overview
         )
     }
 }

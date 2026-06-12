@@ -117,13 +117,16 @@ public struct Artist: Codable, Hashable, Identifiable, Sendable {
     public var genres: [String]
     public var isFavorite: Bool
     public var imageTag: String?
+    /// Biography / "About" text (Jellyfin `Overview`), when fetched in detail.
+    public var overview: String?
 
-    public init(id: String, name: String, genres: [String] = [], isFavorite: Bool = false, imageTag: String? = nil) {
+    public init(id: String, name: String, genres: [String] = [], isFavorite: Bool = false, imageTag: String? = nil, overview: String? = nil) {
         self.id = id
         self.name = name
         self.genres = genres
         self.isFavorite = isFavorite
         self.imageTag = imageTag
+        self.overview = overview
     }
 }
 
