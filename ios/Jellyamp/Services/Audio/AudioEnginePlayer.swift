@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import AudioToolbox
 import OSLog
 import JellyampCore
 import JellyfinBackend
@@ -420,17 +421,30 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
     /// Offline downloads play straight from the local file.
     private func makeSource(for track: Track, startTime: TimeInterval) async -> StreamingAudioSource? {
         let duration = track.duration
+        let hint = Self.fileTypeHint(for: track.container)
         if let offline = DownloadStore.localURL(for: track) {
-            return await StreamingAudioSource.make(url: offline, startTime: startTime, duration: duration)
+            return await StreamingAudioSource.make(url: offline, startTime: startTime, duration: duration, fileTypeHint: hint)
         }
         let request = settings.playbackProfile.profile.request(for: track, network: .wifi)
         let remote = StreamURLBuilder.url(for: track.id, request: request, session: session)
-        if let streamed = await StreamingAudioSource.make(url: remote, startTime: startTime, duration: duration) {
+        if let streamed = await StreamingAudioSource.make(url: remote, startTime: startTime, duration: duration, fileTypeHint: hint) {
             return streamed
         }
         log.info("progressive read unavailable; falling back to cached download for \(track.title, privacy: .public)")
         guard let cached = try? await cache.localFile(for: track.id, remoteURL: remote) else { return nil }
-        return await StreamingAudioSource.make(url: cached, startTime: startTime, duration: duration)
+        return await StreamingAudioSource.make(url: cached, startTime: startTime, duration: duration, fileTypeHint: hint)
+    }
+
+    private static func fileTypeHint(for container: String?) -> AudioFileTypeID {
+        switch container?.lowercased() {
+        case "mp3": return kAudioFileMP3Type
+        case "aac", "adts": return kAudioFileAAC_ADTSType
+        case "m4a", "m4b", "mp4", "alac": return kAudioFileM4AType
+        case "flac": return kAudioFileFLACType
+        case "wav": return kAudioFileWAVEType
+        case "aif", "aiff": return kAudioFileAIFFType
+        default: return 0
+        }
     }
 
     private func bumpStartGeneration() -> Int { startGeneration += 1; return startGeneration }

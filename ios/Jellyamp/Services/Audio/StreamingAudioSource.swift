@@ -18,6 +18,8 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
 
     private let url: URL
     private let startTime: TimeInterval
+    private let fileTypeHint: AudioFileTypeID
+    private var loggedFirstBytes = false
     private let queue = DispatchQueue(label: "dev.djtobi.Jellyamp.afs")
     private let log = Logger(subsystem: "dev.djtobi.Jellyamp", category: "Streaming")
 
@@ -47,30 +49,39 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
     private var formatContinuation: CheckedContinuation<Bool, Never>?
     private var resolvedFormat = false
 
-    private init(url: URL, startTime: TimeInterval, duration: TimeInterval) {
+    private init(url: URL, startTime: TimeInterval, duration: TimeInterval, fileTypeHint: AudioFileTypeID) {
         self.url = url
         self.startTime = startTime
         self.duration = duration
+        self.fileTypeHint = fileTypeHint
         super.init()
     }
 
     /// Opens the stream and waits until the audio format is known (header
-    /// parsed). Returns nil if no decodable audio appears.
-    static func make(url: URL, startTime: TimeInterval, duration: TimeInterval) async -> StreamingAudioSource? {
-        let source = StreamingAudioSource(url: url, startTime: startTime, duration: duration)
+    /// parsed). Returns nil if no decodable audio appears or it times out.
+    static func make(url: URL, startTime: TimeInterval, duration: TimeInterval, fileTypeHint: AudioFileTypeID = 0) async -> StreamingAudioSource? {
+        let source = StreamingAudioSource(url: url, startTime: startTime, duration: duration, fileTypeHint: fileTypeHint)
         let ready = await source.open()
+        if !ready { source.stop() }
         return ready ? source : nil
     }
 
     private func open() async -> Bool {
         let context = Unmanaged.passUnretained(self).toOpaque()
-        let status = AudioFileStreamOpen(context, propertyCallback, packetsCallback, 0, &streamID)
+        let status = AudioFileStreamOpen(context, propertyCallback, packetsCallback, fileTypeHint, &streamID)
         guard status == noErr, streamID != nil else { return false }
         return await withCheckedContinuation { continuation in
             queue.async { [weak self] in
                 guard let self else { continuation.resume(returning: false); return }
                 self.formatContinuation = continuation
                 self.startFetching()
+                // Watchdog: never hang if the format never resolves.
+                self.queue.asyncAfter(deadline: .now() + 15) { [weak self] in
+                    guard let self, !self.resolvedFormat, let continuation = self.formatContinuation else { return }
+                    self.log.error("stream open timed out (no audio format)")
+                    self.formatContinuation = nil
+                    continuation.resume(returning: false)
+                }
             }
         }
     }
@@ -86,6 +97,8 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
             readFileChunk()
         } else {
             var request = URLRequest(url: url)
+            request.timeoutInterval = 30
+            request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")  // raw bytes for the parser
             if startTime > 0, duration > 0 {
                 // Approximate byte seek; AudioFileStream re-syncs to frame boundaries.
                 if let size = remoteSize() {
@@ -93,11 +106,15 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
                     request.setValue("bytes=\(offset)-", forHTTPHeaderField: "Range")
                 }
             }
-            let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+            let configuration = URLSessionConfiguration.default
+            configuration.waitsForConnectivity = true
+            configuration.timeoutIntervalForRequest = 30
+            let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
             self.session = session
             let task = session.dataTask(with: request)
             dataTask = task
             task.resume()
+            log.info("streaming GET \(self.url.lastPathComponent, privacy: .public)")
         }
     }
 
@@ -170,6 +187,7 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
         format = destFormat
         targetFrames = AVAudioFrameCount(sampleRate * 3)
         resolvedFormat = true
+        log.info("stream format ready: \(sampleRate, privacy: .public) Hz, \(channels, privacy: .public) ch")
         formatContinuation?.resume(returning: true)
         formatContinuation = nil
     }
@@ -290,6 +308,10 @@ extension StreamingAudioSource: URLSessionDataDelegate {
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         queue.async { [weak self] in
             guard let self, self.isRunning || !self.resolvedFormat else { return }
+            if !self.loggedFirstBytes {
+                self.loggedFirstBytes = true
+                self.log.info("stream first bytes: \(data.count, privacy: .public)")
+            }
             self.parse(data)
         }
     }
