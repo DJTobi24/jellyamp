@@ -14,6 +14,8 @@ public protocol MusicLibraryProviding: Sendable {
     func albums(byArtist artistID: String) async throws -> [Album]
     func tracks(byArtist artistID: String) async throws -> [Track]
     func favoriteTracks(limit: Int) async throws -> [Track]
+    func favoriteAlbums(limit: Int) async throws -> [Album]
+    func favoriteArtists(limit: Int) async throws -> [Artist]
     func tracks(inGenre genreID: String) async throws -> [Track]
     func lyrics(forTrack trackID: String) async throws -> LyricsTimeline?
     func genres() async throws -> [Genre]
@@ -136,6 +138,29 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         guard (200..<300).contains(response.statusCode) else {
             throw JellyfinError.serverError(status: response.statusCode)
         }
+    }
+
+    /// The user's saved ("favorited") albums.
+    public func favoriteAlbums(limit: Int = 500) async throws -> [Album] {
+        let response = try await items(query: [
+            URLQueryItem(name: "filters", value: "IsFavorite"),
+            URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "SortName"),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+        return response.Items.map(DTOMapper.album(from:))
+    }
+
+    /// The user's followed ("favorited") album-artists.
+    public func favoriteArtists(limit: Int = 500) async throws -> [Artist] {
+        let request = session.request(path: "Artists/AlbumArtists", query: [
+            URLQueryItem(name: "isFavorite", value: "true"),
+            URLQueryItem(name: "userId", value: session.userID ?? ""),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+        let response: ItemsResponse = try await execute(request)
+        return response.Items.map(DTOMapper.artist(from:))
     }
 
     /// All tracks in a music genre.

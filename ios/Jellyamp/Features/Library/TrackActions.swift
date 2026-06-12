@@ -82,6 +82,34 @@ private struct TrackContextActions: ViewModifier {
     }
 }
 
+/// Heart toggle to save an album / follow an artist (anything with an item id).
+/// Optimistically flips, then writes the favorite state to the server.
+struct FavoriteButton: View {
+    @EnvironmentObject private var container: DependencyContainer
+    let itemID: String
+    @State private var isFavorite: Bool
+
+    init(itemID: String, isFavorite: Bool) {
+        self.itemID = itemID
+        _isFavorite = State(initialValue: isFavorite)
+    }
+
+    var body: some View {
+        Button {
+            isFavorite.toggle()
+            let target = isFavorite
+            Task { try? await container.library?.setFavorite(itemID: itemID, isFavorite: target) }
+        } label: {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                .font(.title2)
+                .foregroundStyle(isFavorite ? Color.pink : Color.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Visible "⋯" menu for an already-loaded collection (genre / liked / …):
 /// Play Next, Add to Queue, Download the whole set.
 struct CollectionMenuButton: View {

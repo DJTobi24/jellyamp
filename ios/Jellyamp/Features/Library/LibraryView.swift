@@ -9,6 +9,12 @@ struct LibraryView: View {
                 NavigationLink(destination: LikedSongsView()) {
                     Label("Liked Songs", systemImage: "heart.fill")
                 }
+                NavigationLink(destination: SavedAlbumsView()) {
+                    Label("Saved Albums", systemImage: "heart.rectangle")
+                }
+                NavigationLink(destination: FollowedArtistsView()) {
+                    Label("Following", systemImage: "heart.circle")
+                }
                 NavigationLink(destination: AlbumsGridView()) {
                     Label("Albums", systemImage: "square.stack")
                 }
@@ -120,6 +126,7 @@ struct AlbumDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         .disabled(tracks.isEmpty)
+                        FavoriteButton(itemID: album.id, isFavorite: album.isFavorite)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -247,6 +254,7 @@ struct ArtistDetailView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    FavoriteButton(itemID: artist.id, isFavorite: artist.isFavorite)
                 }
                 .listRowSeparator(.hidden)
             }
@@ -326,6 +334,79 @@ struct LikedSongsView: View {
         .searchable(text: $searchText, prompt: "Search liked songs")
         .task {
             tracks = (try? await container.library?.favoriteTracks(limit: 500)) ?? []
+            loaded = true
+        }
+    }
+}
+
+struct SavedAlbumsView: View {
+    @EnvironmentObject private var container: DependencyContainer
+    @State private var albums: [Album] = []
+    @State private var loaded = false
+
+    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
+
+    var body: some View {
+        Group {
+            if loaded, albums.isEmpty {
+                ContentUnavailableCompatView(
+                    title: "No Saved Albums",
+                    systemImage: "heart",
+                    description: "Tap the heart on an album to save it here."
+                )
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(albums) { album in
+                            NavigationLink(destination: AlbumDetailView(album: album)) {
+                                AlbumCard(album: album)
+                            }
+                            .buttonStyle(.plain)
+                            .albumContextActions(album)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
+        }
+        .navigationTitle("Saved Albums")
+        .task {
+            albums = (try? await container.library?.favoriteAlbums(limit: 500)) ?? []
+            loaded = true
+        }
+    }
+}
+
+struct FollowedArtistsView: View {
+    @EnvironmentObject private var container: DependencyContainer
+    @State private var artists: [Artist] = []
+    @State private var loaded = false
+
+    var body: some View {
+        Group {
+            if loaded, artists.isEmpty {
+                ContentUnavailableCompatView(
+                    title: "Not Following Anyone",
+                    systemImage: "heart",
+                    description: "Tap the heart on an artist to follow them."
+                )
+            } else {
+                List(artists) { artist in
+                    NavigationLink(destination: ArtistDetailView(artist: artist)) {
+                        HStack {
+                            ArtworkView(itemID: artist.id, imageTag: artist.imageTag, size: 44)
+                                .clipShape(Circle())
+                            Text(artist.name)
+                        }
+                    }
+                    .artistContextActions(artist)
+                }
+                .listStyle(.plain)
+            }
+        }
+        .navigationTitle("Following")
+        .task {
+            artists = (try? await container.library?.favoriteArtists(limit: 500)) ?? []
             loaded = true
         }
     }
