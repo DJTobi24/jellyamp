@@ -33,4 +33,10 @@ public protocol PlayerEngine: AnyObject {
     func playUpNext(at upNextIndex: Int)
     /// Remove an upcoming item (index into the current `upNext`).
     func removeUpNext(at upNextIndex: Int)
+
+    // Sleep timer.
+    /// Stop playback after `duration` seconds, or — when nil — at the end of
+    /// the current track. Playback fades out over the configured window.
+    func startSleepTimer(duration: TimeInterval?)
+    func cancelSleepTimer()
 }

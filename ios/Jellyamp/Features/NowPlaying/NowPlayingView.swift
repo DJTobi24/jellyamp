@@ -81,8 +81,45 @@ struct NowPlayingView: View {
                     .lineLimit(1)
             }
             Spacer()
+            sleepTimerMenu
             headerButton(systemName: "list.bullet") { showQueue = true }
         }
+    }
+
+    private var sleepTimerMenu: some View {
+        Menu {
+            ForEach([15, 30, 45, 60], id: \.self) { minutes in
+                Button("\(minutes) minutes") {
+                    container.player?.startSleepTimer(duration: TimeInterval(minutes * 60))
+                }
+            }
+            Button("End of track") {
+                container.player?.startSleepTimer(duration: nil)
+            }
+            if playerState.sleepTimerActive {
+                Button("Turn off", role: .destructive) {
+                    container.player?.cancelSleepTimer()
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: playerState.sleepTimerActive ? "moon.fill" : "moon")
+                    .font(.title3.bold())
+                if let remaining = playerState.sleepTimerRemaining {
+                    Text(formatShort(remaining))
+                        .font(.caption.monospacedDigit())
+                }
+            }
+            .foregroundStyle(playerState.sleepTimerActive ? AnyShapeStyle(.purple) : AnyShapeStyle(.secondary))
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func formatShort(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     private func headerButton(systemName: String, action: @escaping () -> Void) -> some View {
@@ -281,4 +318,7 @@ final class PlayerStateModel: ObservableObject {
     @Published var upNext: [Track] = []
     /// Non-nil when the current track failed to start; surfaced in the UI.
     @Published var errorMessage: String?
+    /// Sleep-timer state for the moon button / countdown in the player.
+    @Published var sleepTimerActive = false
+    @Published var sleepTimerRemaining: TimeInterval?
 }

@@ -59,6 +59,21 @@ private struct TrackActionButtons: View {
             Button {
                 container.player?.enqueue([track])
             } label: { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+            Button {
+                startInstantMix()
+            } label: { Label("Instant Mix", systemImage: "wand.and.stars") }
+        }
+    }
+
+    /// Endless-radio feel from one track: with jellyamp-server this is true
+    /// sonic similarity, against plain Jellyfin it's the metadata Instant Mix.
+    private func startInstantMix() {
+        Task {
+            guard let sonic = container.sonic, let library = container.library else { return }
+            guard let similar = try? await sonic.similarTracks(to: track.id, limit: 50), !similar.isEmpty else { return }
+            let ids = similar.map(\.itemID)
+            guard let mixTracks = try? await library.tracks(byIDs: ids), !mixTracks.isEmpty else { return }
+            container.player?.load(queue: PlayQueue(tracks: [track] + mixTracks))
         }
     }
 }

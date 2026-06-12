@@ -15,6 +15,9 @@ final class DependencyContainer: ObservableObject {
     private(set) var library: MusicLibraryProviding?
     private(set) var sonic: SonicProviding?
     private(set) var player: PlayerEngine?
+    /// Lock screen / Control Center / interruption handling; alive as long
+    /// as a session is active.
+    private var systemMedia: SystemMediaController?
     /// Single shared bridge the player views observe; the active `EnginePlayer`
     /// pushes state into it. Lives for the whole app session.
     let playerState = PlayerStateModel()
@@ -47,12 +50,16 @@ final class DependencyContainer: ObservableObject {
         session = nil
         library = nil
         sonic = nil
+        player = nil
+        systemMedia = nil
     }
 
     private func activate(session: JellyfinSession) async {
         self.session = session
         library = MusicLibraryAPI(session: session)
-        player = EnginePlayer(session: session, settings: settings, stateModel: playerState)
+        let engine = EnginePlayer(session: session, settings: settings, stateModel: playerState)
+        player = engine
+        systemMedia = SystemMediaController(player: engine, playerState: playerState, session: session)
         await rewireSonicProvider()
     }
 

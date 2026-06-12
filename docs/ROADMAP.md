@@ -34,15 +34,16 @@ server.
 - Now Playing: large art, blurred-art background, queue sheet, mini player
 - Playback reporting (play counts/resume on the server)
 
-## Phase 2 — System integration & offline
+## Phase 2 — System integration & offline ✦ current
 
-- Lock screen / Control Center (`MPNowPlayingInfoCenter`,
+- ✅ Lock screen / Control Center (`MPNowPlayingInfoCenter`,
   `MPRemoteCommandCenter`), interruption & route handling
-- AirPlay route support; CarPlay audio app (templates); Siri / Shortcuts
+- ✅ AirPlay route support; ✅ sleep timer (fade-out + end-of-track)
+- ✅ Instant Mix from any track (sonic server or Jellyfin fallback)
+- CarPlay audio app (blocked on Apple capability approval); Siri / Shortcuts
   (`INPlayMediaIntent`)
 - Background downloads, Downloads UI, full offline mode, smart-sync rules
-- Sleep timer, synced lyrics view
-- Track / artist / album radio + Instant Mix via Jellyfin (fallback provider)
+- Synced lyrics view
 
 ## Phase 3 — Companion backend & sonic features
 
