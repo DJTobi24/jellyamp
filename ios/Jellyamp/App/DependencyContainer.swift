@@ -84,6 +84,9 @@ final class DependencyContainer: ObservableObject {
         // `EnginePlayer(...)` for the AVPlayer streaming engine if needed.
         let engine = AudioEnginePlayer(session: session, settings: settings, stateModel: playerState)
         player = engine
+        if let preset = EQPreset.builtIn(id: settings.activeEQPresetID) {
+            engine.apply(eqPreset: preset)
+        }
         systemMedia = SystemMediaController(player: engine, playerState: playerState, session: session)
         setupAutoplay()
         await rewireSonicProvider()
