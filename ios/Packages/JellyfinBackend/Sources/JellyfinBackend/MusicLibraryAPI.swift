@@ -24,6 +24,11 @@ public protocol MusicLibraryProviding: Sendable {
     func addToPlaylist(playlistID: String, itemIDs: [String]) async throws
     func playlists() async throws -> [Playlist]
     func tracks(inPlaylist playlistID: String) async throws -> [Track]
+    func removeFromPlaylist(playlistID: String, entryIDs: [String]) async throws
+    func movePlaylistItem(playlistID: String, entryID: String, toIndex: Int) async throws
+    func renamePlaylist(playlistID: String, name: String) async throws
+    func deletePlaylist(playlistID: String) async throws
+    func setPlaylistImage(playlistID: String, jpeg: Data) async throws
     func recentlyAddedAlbums(limit: Int) async throws -> [Album]
     func recentlyPlayedTracks(limit: Int) async throws -> [Track]
     func search(query: String, limit: Int) async throws -> (tracks: [Track], albums: [Album], artists: [Artist])
@@ -140,6 +145,55 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         }
     }
 
+    public func removeFromPlaylist(playlistID: String, entryIDs: [String]) async throws {
+        try await sendExpectingSuccess(session.request(
+            path: "Playlists/\(playlistID)/Items",
+            query: [
+                URLQueryItem(name: "entryIds", value: entryIDs.joined(separator: ",")),
+                URLQueryItem(name: "userId", value: session.userID ?? ""),
+            ],
+            method: "DELETE"
+        ))
+    }
+
+    public func movePlaylistItem(playlistID: String, entryID: String, toIndex: Int) async throws {
+        try await sendExpectingSuccess(session.request(
+            path: "Playlists/\(playlistID)/Items/\(entryID)/Move/\(toIndex)",
+            method: "POST"
+        ))
+    }
+
+    public func renamePlaylist(playlistID: String, name: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["Name": name])
+        try await sendExpectingSuccess(session.request(
+            path: "Playlists/\(playlistID)",
+            method: "POST",
+            body: body
+        ))
+    }
+
+    public func deletePlaylist(playlistID: String) async throws {
+        try await sendExpectingSuccess(session.request(path: "Items/\(playlistID)", method: "DELETE"))
+    }
+
+    public func setPlaylistImage(playlistID: String, jpeg: Data) async throws {
+        let url = session.serverURL.appendingPathComponent("Items/\(playlistID)/Images/Primary")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(session.authorizationHeader, forHTTPHeaderField: "Authorization")
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        // Jellyfin reads the image upload body as base64.
+        request.httpBody = jpeg.base64EncodedData()
+        try await sendExpectingSuccess(request)
+    }
+
+    private func sendExpectingSuccess(_ request: URLRequest) async throws {
+        let (_, response) = try await transport.send(request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw JellyfinError.serverError(status: response.statusCode)
+        }
+    }
+
     /// The user's saved ("favorited") albums.
     public func favoriteAlbums(limit: Int = 500) async throws -> [Album] {
         let response = try await items(query: [
@@ -224,7 +278,11 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "fields", value: defaultFields),
         ])
         let response: ItemsResponse = try await execute(request)
-        return response.Items.map(DTOMapper.track(from:))
+        return response.Items.map { dto in
+            var track = DTOMapper.track(from: dto)
+            track.playlistEntryID = dto.PlaylistItemId
+            return track
+        }
     }
 
     public func recentlyAddedAlbums(limit: Int = 20) async throws -> [Album] {

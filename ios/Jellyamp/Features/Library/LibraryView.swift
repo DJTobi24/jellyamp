@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import JellyampCore
 
 /// Entry to artists / albums / genres / playlists browsing.
@@ -606,6 +607,9 @@ struct PlaylistsView: View {
     @EnvironmentObject private var container: DependencyContainer
     @State private var playlists: [Playlist] = []
 
+    @State private var showNew = false
+    @State private var newName = ""
+
     var body: some View {
         List(playlists) { playlist in
             NavigationLink(destination: PlaylistDetailView(playlist: playlist)) {
@@ -623,17 +627,52 @@ struct PlaylistsView: View {
             }
         }
         .navigationTitle("Playlists")
-        .task {
-            playlists = (try? await container.library?.playlists()) ?? []
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { newName = ""; showNew = true } label: { Image(systemName: "plus") }
+            }
+        }
+        .alert("New Playlist", isPresented: $showNew) {
+            TextField("Name", text: $newName)
+            Button("Create") { create() }
+            Button("Cancel", role: .cancel) { }
+        }
+        .onAppear { Task { await reload() } }
+        .refreshable { await reload() }
+    }
+
+    private func reload() async {
+        playlists = (try? await container.library?.playlists()) ?? []
+    }
+
+    private func create() {
+        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        Task {
+            _ = try? await container.library?.createPlaylist(name: name, itemIDs: [])
+            await reload()
         }
     }
 }
 
 struct PlaylistDetailView: View {
     @EnvironmentObject private var container: DependencyContainer
+    @Environment(\.dismiss) private var dismiss
     let playlist: Playlist
     @State private var tracks: [Track] = []
     @State private var searchText = ""
+    @State private var name: String
+    @State private var artworkVersion = 0
+    @State private var showRename = false
+    @State private var renameText = ""
+    @State private var showDelete = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var showPhotoPicker = false
+
+    init(playlist: Playlist) {
+        self.playlist = playlist
+        _name = State(initialValue: playlist.name)
+    }
 
     private var displayed: [Track] { tracks.filtered(by: searchText) }
 
@@ -642,13 +681,10 @@ struct PlaylistDetailView: View {
             Section {
                 VStack(spacing: 12) {
                     ArtworkView(itemID: playlist.id, imageTag: playlist.imageTag, size: 240)
-                    Text(playlist.name)
+                        .id(artworkVersion)
+                    Text(name)
                         .font(.title2.bold())
                         .multilineTextAlignment(.center)
-                    if let count = playlist.trackCount {
-                        Text("\(count) tracks")
-                            .foregroundStyle(.secondary)
-                    }
                     HStack {
                         Button {
                             container.player?.load(queue: PlayQueue(tracks: tracks, startAt: 0))
@@ -692,13 +728,87 @@ struct PlaylistDetailView: View {
                     }
                     .trackContextActions(track)
                 }
+                .onDelete(perform: removeTracks)
+                .onMove(perform: searchText.isEmpty ? moveTrack : nil)
             }
         }
         .listStyle(.plain)
-        .navigationTitle(playlist.name)
+        .navigationTitle(name)
         .searchable(text: $searchText, prompt: "Search in playlist")
-        .task {
-            tracks = (try? await container.library?.tracks(inPlaylist: playlist.id)) ?? []
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) { EditButton() }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button { renameText = name; showRename = true } label: { Label("Rename", systemImage: "pencil") }
+                    Button { showPhotoPicker = true } label: { Label("Change Image", systemImage: "photo") }
+                    Button(role: .destructive) { showDelete = true } label: { Label("Delete Playlist", systemImage: "trash") }
+                } label: { Image(systemName: "ellipsis.circle") }
+            }
         }
+        .alert("Rename Playlist", isPresented: $showRename) {
+            TextField("Name", text: $renameText)
+            Button("Save") { rename() }
+            Button("Cancel", role: .cancel) { }
+        }
+        .alert("Delete Playlist?", isPresented: $showDelete) {
+            Button("Delete", role: .destructive) { deletePlaylist() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("\u{201C}\(name)\u{201D} will be removed. The songs stay in your library.")
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
+        .task(id: photoItem) { await uploadImageIfNeeded() }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        tracks = (try? await container.library?.tracks(inPlaylist: playlist.id)) ?? []
+    }
+
+    private func removeTracks(at offsets: IndexSet) {
+        let entryIDs = offsets.compactMap { displayed[$0].playlistEntryID }
+        guard !entryIDs.isEmpty else { return }
+        Task {
+            try? await container.library?.removeFromPlaylist(playlistID: playlist.id, entryIDs: entryIDs)
+            await reload()
+        }
+    }
+
+    private func moveTrack(from source: IndexSet, to destination: Int) {
+        guard let from = source.first, let entry = tracks[safe: from]?.playlistEntryID else { return }
+        let target = destination > from ? destination - 1 : destination
+        Task {
+            try? await container.library?.movePlaylistItem(playlistID: playlist.id, entryID: entry, toIndex: target)
+            await reload()
+        }
+    }
+
+    private func rename() {
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        name = trimmed
+        Task { try? await container.library?.renamePlaylist(playlistID: playlist.id, name: trimmed) }
+    }
+
+    private func deletePlaylist() {
+        Task {
+            try? await container.library?.deletePlaylist(playlistID: playlist.id)
+            dismiss()
+        }
+    }
+
+    private func uploadImageIfNeeded() async {
+        guard let photoItem,
+              let data = try? await photoItem.loadTransferable(type: Data.self),
+              let jpeg = UIImage(data: data)?.jpegData(compressionQuality: 0.85) else { return }
+        try? await container.library?.setPlaylistImage(playlistID: playlist.id, jpeg: jpeg)
+        artworkVersion += 1
+        self.photoItem = nil
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
