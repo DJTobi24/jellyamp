@@ -430,6 +430,7 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
         let duration = track.duration
         let hint = Self.fileTypeHint(for: track.container)
         let outputFormat = engineFormat
+        log.info("makeSource \"\(track.title, privacy: .public)\" container=\(track.container ?? "nil", privacy: .public) codec=\(track.codec ?? "nil", privacy: .public) start=\(startTime, privacy: .public)")
         if let offline = DownloadStore.localURL(for: track) {
             return await StreamingAudioSource.make(url: offline, startTime: startTime, duration: duration, fileTypeHint: hint, outputFormat: outputFormat)
         }

@@ -20,8 +20,8 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
     private let startTime: TimeInterval
     private let fileTypeHint: AudioFileTypeID
     private var loggedFirstBytes = false
-    private var loggedPeak = false
     private var loggedFill = false
+    private var peakLogCount = 0
     private let queue = DispatchQueue(label: "dev.djtobi.Jellyamp.afs")
     private let log = Logger(subsystem: "dev.djtobi.Jellyamp", category: "Streaming")
 
@@ -228,13 +228,13 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
             }
             if packetCount == 0 { return }      // ran out of input for now (need more bytes)
             buffer.frameLength = packetCount
-            if !loggedPeak {
-                loggedPeak = true
+            if peakLogCount < 8 {
+                peakLogCount += 1
                 var peak: Float = 0
                 if let channel = buffer.floatChannelData {
                     for frame in 0..<Int(packetCount) { peak = max(peak, abs(channel[0][frame])) }
                 }
-                log.info("first decoded buffer: \(packetCount, privacy: .public) frames, peak \(peak, privacy: .public)")
+                log.info("buffer \(self.peakLogCount, privacy: .public): \(packetCount, privacy: .public) frames, peak \(peak, privacy: .public)")
             }
             let frames = buffer.frameLength
             pendingFrames += frames
