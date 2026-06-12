@@ -47,6 +47,7 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
     private var monotonicNow: TimeInterval { Date().timeIntervalSinceReferenceDate }
     private var intendsToPlay = false
     private var loggedFirstTick = false
+    private var loggedCrossfadeMid = false
     private var shuffleEnabled = false
     private var preferredRepeatMode: RepeatMode = .off
 
@@ -326,6 +327,7 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         outgoingLoudness = loudnessGain
         incomingTrack = next
         incomingLoudness = gain(for: next)
+        loggedCrossfadeMid = false
 
         // Start the incoming track silently on the idle player; the active
         // (outgoing) player stays active and keeps driving the ramp via its
@@ -344,6 +346,14 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         // active = outgoing (fades out), idle = incoming (fades in).
         activePlayer.volume = clamp(masterVolume * outgoingLoudness * fade * Float(CrossfadeCurve.fadeOutGain(progress: progress)))
         idlePlayer.volume = clamp(masterVolume * incomingLoudness * fade * Float(CrossfadeCurve.fadeInGain(progress: progress)))
+        if !loggedCrossfadeMid, progress >= 0.5 {
+            loggedCrossfadeMid = true
+            log.info("""
+            crossfade mid p=\(progress, privacy: .public) \
+            out(vol=\(self.activePlayer.volume, privacy: .public) rate=\(self.activePlayer.rate, privacy: .public) tcs=\(self.activePlayer.timeControlStatus.rawValue, privacy: .public)) \
+            in(vol=\(self.idlePlayer.volume, privacy: .public) rate=\(self.idlePlayer.rate, privacy: .public) tcs=\(self.idlePlayer.timeControlStatus.rawValue, privacy: .public))
+            """)
+        }
         if progress >= 1 { finishCrossfade() }
     }
 

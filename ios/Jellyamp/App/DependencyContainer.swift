@@ -80,7 +80,9 @@ final class DependencyContainer: ObservableObject {
         libraryCache = LibraryCache(scope: session.userID ?? "default")
         downloads = DownloadManager(session: session)
         library = MusicLibraryAPI(session: session)
-        let engine = EnginePlayer(session: session, settings: settings, stateModel: playerState)
+        // Crossfade-capable engine (mixes two nodes). Swap back to
+        // `EnginePlayer(...)` for the AVPlayer streaming engine if needed.
+        let engine = AudioEnginePlayer(session: session, settings: settings, stateModel: playerState)
         player = engine
         systemMedia = SystemMediaController(player: engine, playerState: playerState, session: session)
         setupAutoplay()
