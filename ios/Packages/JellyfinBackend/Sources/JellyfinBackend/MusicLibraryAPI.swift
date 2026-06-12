@@ -7,10 +7,10 @@ import FoundationNetworking
 /// What the UI needs from a music library. Implemented here against Jellyfin;
 /// decorated with an offline filter in the app shell.
 public protocol MusicLibraryProviding: Sendable {
-    func albums(sortBy: String, startIndex: Int, limit: Int) async throws -> [Album]
+    func albums(sortBy: String, sortOrder: String, startIndex: Int, limit: Int) async throws -> [Album]
     func album(id: String) async throws -> Album?
     func tracks(inAlbum albumID: String) async throws -> [Track]
-    func artists(startIndex: Int, limit: Int) async throws -> [Artist]
+    func artists(sortBy: String, startIndex: Int, limit: Int) async throws -> [Artist]
     func artist(id: String) async throws -> Artist?
     func albums(byArtist artistID: String) async throws -> [Album]
     func appearsOnAlbums(artistID: String) async throws -> [Album]
@@ -54,11 +54,12 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         self.transport = transport
     }
 
-    public func albums(sortBy: String = "SortName", startIndex: Int = 0, limit: Int = 100) async throws -> [Album] {
+    public func albums(sortBy: String = "SortName", sortOrder: String = "Ascending", startIndex: Int = 0, limit: Int = 100) async throws -> [Album] {
         let response = try await items(query: [
             URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
             URLQueryItem(name: "recursive", value: "true"),
             URLQueryItem(name: "sortBy", value: sortBy),
+            URLQueryItem(name: "sortOrder", value: sortOrder),
             URLQueryItem(name: "startIndex", value: String(startIndex)),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
@@ -82,8 +83,9 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         return response.Items.map(DTOMapper.track(from:))
     }
 
-    public func artists(startIndex: Int = 0, limit: Int = 100) async throws -> [Artist] {
+    public func artists(sortBy: String = "SortName", startIndex: Int = 0, limit: Int = 100) async throws -> [Artist] {
         let request = session.request(path: "Artists/AlbumArtists", query: [
+            URLQueryItem(name: "sortBy", value: sortBy),
             URLQueryItem(name: "startIndex", value: String(startIndex)),
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "userId", value: session.userID ?? ""),
