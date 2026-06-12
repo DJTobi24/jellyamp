@@ -111,6 +111,9 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
                 if let size = remoteSize() {
                     let offset = Int64(Double(size) * (startTime / duration))
                     request.setValue("bytes=\(offset)-", forHTTPHeaderField: "Range")
+                    log.info("seek \(self.startTime, privacy: .public)s → byte \(offset, privacy: .public)/\(size, privacy: .public)")
+                } else {
+                    log.error("seek \(self.startTime, privacy: .public)s but size unknown — cannot range-seek, audio will start at 0")
                 }
             }
             let configuration = URLSessionConfiguration.default
@@ -146,16 +149,24 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? nil
     }
 
-    /// Best-effort content length via a HEAD request (synchronous, off the
-    /// main thread inside `open`).
+    /// Best-effort total size via a one-byte ranged GET (`bytes=0-0`), reading
+    /// the `Content-Range: bytes 0-0/TOTAL` header. Jellyfin's static file
+    /// endpoint honours Range reliably (every client seeks this way) whereas it
+    /// often rejects HEAD, which would leave the size — and thus the seek —
+    /// unresolved.
     private func remoteSize() -> Int64? {
         var request = URLRequest(url: url)
-        request.httpMethod = "HEAD"
+        request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
         let semaphore = DispatchSemaphore(value: 0)
         var length: Int64?
         URLSession.shared.dataTask(with: request) { _, response, _ in
-            if let http = response as? HTTPURLResponse, http.expectedContentLength > 0 {
-                length = http.expectedContentLength
+            if let http = response as? HTTPURLResponse {
+                if let range = http.value(forHTTPHeaderField: "Content-Range"),
+                   let total = range.split(separator: "/").last, let bytes = Int64(total) {
+                    length = bytes
+                } else if http.expectedContentLength > 0 {
+                    length = http.expectedContentLength
+                }
             }
             semaphore.signal()
         }.resume()
@@ -326,6 +337,15 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
 // MARK: - URLSession (remote byte delivery)
 
 extension StreamingAudioSource: URLSessionDataDelegate {
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+                    didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        if let http = response as? HTTPURLResponse {
+            log.info("stream response: HTTP \(http.statusCode, privacy: .public)\(self.startTime > 0 && http.statusCode != 206 ? " (Range ignored — seek won't apply!)" : "", privacy: .public)")
+        }
+        completionHandler(.allow)
+    }
+
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         queue.async { [weak self] in
             guard let self, self.isRunning || !self.resolvedFormat else { return }
