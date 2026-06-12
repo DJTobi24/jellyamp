@@ -31,6 +31,7 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
     }
 
     private let engine = AVAudioEngine()
+    private let engineFormat: AVAudioFormat
     private let chainA: Chain
     private let chainB: Chain
     private var activeIsA = true
@@ -77,9 +78,17 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
         self.stateModel = stateModel
         self.sleepTimer = SleepTimer(fadeOutDuration: settings.sleepTimerFadeOut)
         self.fadePlanner = SweetFadePlanner(fadeDuration: settings.crossfadeDuration)
+        self.engineFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
         self.chainA = Chain(engine: engine)
         self.chainB = Chain(engine: engine)
         super.init()
+        // Fixed engine format on both chains, connected once — the streaming
+        // sources convert to it, so we never reconnect nodes (which can leave
+        // a node silent while the engine is running).
+        for chain in [chainA, chainB] {
+            engine.connect(chain.player, to: chain.scheduler.eq, format: engineFormat)
+            engine.connect(chain.scheduler.eq, to: engine.mainMixerNode, format: engineFormat)
+        }
         engine.prepare()
         log.info("AudioEnginePlayer init (progressive streaming)")
     }
@@ -259,14 +268,12 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
     /// Attaches a source to a chain and starts the node.
     private func play(_ track: Track, source: StreamingAudioSource, on chain: Chain, startOffset: TimeInterval) {
         activateSession()
-        startEngineIfNeeded()
         chain.source?.stop()
         chain.source = source
         chain.startOffset = startOffset
         let generation = chain.generation + 1
         chain.generation = generation
         chain.player.stop()
-        engine.connect(chain.player, to: chain.scheduler.eq, format: source.format)
         if let eqPreset { chain.scheduler.apply(preset: eqPreset) }
         startEngineIfNeeded()
         source.beginScheduling(on: chain.player) { [weak self] in
@@ -346,7 +353,6 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
         chain.generation = generation
         chain.player.stop()
         chain.player.volume = 0
-        engine.connect(chain.player, to: chain.scheduler.eq, format: source.format)
         if let eqPreset { chain.scheduler.apply(preset: eqPreset) }
         startEngineIfNeeded()
         source.beginScheduling(on: chain.player) { [weak self] in
@@ -422,17 +428,18 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
     private func makeSource(for track: Track, startTime: TimeInterval) async -> StreamingAudioSource? {
         let duration = track.duration
         let hint = Self.fileTypeHint(for: track.container)
+        let outputFormat = engineFormat
         if let offline = DownloadStore.localURL(for: track) {
-            return await StreamingAudioSource.make(url: offline, startTime: startTime, duration: duration, fileTypeHint: hint)
+            return await StreamingAudioSource.make(url: offline, startTime: startTime, duration: duration, fileTypeHint: hint, outputFormat: outputFormat)
         }
         let request = settings.playbackProfile.profile.request(for: track, network: .wifi)
         let remote = StreamURLBuilder.url(for: track.id, request: request, session: session)
-        if let streamed = await StreamingAudioSource.make(url: remote, startTime: startTime, duration: duration, fileTypeHint: hint) {
+        if let streamed = await StreamingAudioSource.make(url: remote, startTime: startTime, duration: duration, fileTypeHint: hint, outputFormat: outputFormat) {
             return streamed
         }
         log.info("progressive read unavailable; falling back to cached download for \(track.title, privacy: .public)")
         guard let cached = try? await cache.localFile(for: track.id, remoteURL: remote) else { return nil }
-        return await StreamingAudioSource.make(url: cached, startTime: startTime, duration: duration, fileTypeHint: hint)
+        return await StreamingAudioSource.make(url: cached, startTime: startTime, duration: duration, fileTypeHint: hint, outputFormat: outputFormat)
     }
 
     private static func fileTypeHint(for container: String?) -> AudioFileTypeID {

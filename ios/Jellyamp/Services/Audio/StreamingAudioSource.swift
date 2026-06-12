@@ -13,7 +13,7 @@ import OSLog
 /// `@unchecked Sendable`: mutable state is confined to `queue`; `format` and
 /// `duration` are immutable once `make` returns.
 final class StreamingAudioSource: NSObject, @unchecked Sendable {
-    private(set) var format: AVAudioFormat!
+    let format: AVAudioFormat
     let duration: TimeInterval
 
     private let url: URL
@@ -49,18 +49,23 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
     private var formatContinuation: CheckedContinuation<Bool, Never>?
     private var resolvedFormat = false
 
-    private init(url: URL, startTime: TimeInterval, duration: TimeInterval, fileTypeHint: AudioFileTypeID) {
+    private init(url: URL, startTime: TimeInterval, duration: TimeInterval, fileTypeHint: AudioFileTypeID, outputFormat: AVAudioFormat) {
         self.url = url
         self.startTime = startTime
         self.duration = duration
         self.fileTypeHint = fileTypeHint
+        self.format = outputFormat
+        self.targetFrames = AVAudioFrameCount(outputFormat.sampleRate * 3)
         super.init()
     }
 
-    /// Opens the stream and waits until the audio format is known (header
-    /// parsed). Returns nil if no decodable audio appears or it times out.
-    static func make(url: URL, startTime: TimeInterval, duration: TimeInterval, fileTypeHint: AudioFileTypeID = 0) async -> StreamingAudioSource? {
-        let source = StreamingAudioSource(url: url, startTime: startTime, duration: duration, fileTypeHint: fileTypeHint)
+    /// Opens the stream and waits until the converter is ready (header parsed).
+    /// Decoded audio is converted to `outputFormat` (the fixed engine format).
+    /// Returns nil if no decodable audio appears or it times out.
+    static func make(url: URL, startTime: TimeInterval, duration: TimeInterval,
+                     fileTypeHint: AudioFileTypeID = 0, outputFormat: AVAudioFormat) async -> StreamingAudioSource? {
+        let source = StreamingAudioSource(url: url, startTime: startTime, duration: duration,
+                                          fileTypeHint: fileTypeHint, outputFormat: outputFormat)
         let ready = await source.open()
         if !ready { source.stop() }
         return ready ? source : nil
@@ -176,18 +181,15 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
 
     private func setupConverter() {
         guard converter == nil, sourceASBD.mSampleRate > 0 else { return }
-        let sampleRate = sourceASBD.mSampleRate
-        let channels = max(1, AVAudioChannelCount(sourceASBD.mChannelsPerFrame))
-        guard let destFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate,
-                                             channels: channels, interleaved: false) else { return }
-        var destASBD = destFormat.streamDescription.pointee
+        var destASBD = format.streamDescription.pointee
         var newConverter: AudioConverterRef?
-        guard AudioConverterNew(&sourceASBD, &destASBD, &newConverter) == noErr, let newConverter else { return }
+        guard AudioConverterNew(&sourceASBD, &destASBD, &newConverter) == noErr, let newConverter else {
+            log.error("AudioConverterNew failed (source \(self.sourceASBD.mSampleRate, privacy: .public) Hz)")
+            return
+        }
         converter = newConverter
-        format = destFormat
-        targetFrames = AVAudioFrameCount(sampleRate * 3)
         resolvedFormat = true
-        log.info("stream format ready: \(sampleRate, privacy: .public) Hz, \(channels, privacy: .public) ch")
+        log.info("stream format ready: source \(self.sourceASBD.mSampleRate, privacy: .public) Hz → engine \(self.format.sampleRate, privacy: .public) Hz, \(self.format.channelCount, privacy: .public) ch")
         formatContinuation?.resume(returning: true)
         formatContinuation = nil
     }
@@ -205,7 +207,7 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
     // MARK: - Decode + schedule
 
     private func decodeAndSchedule() {
-        guard isRunning, resolvedFormat, let converter, let node, let format else { return }
+        guard isRunning, resolvedFormat, let converter, let node else { return }
         while pendingFrames < targetFrames, !packets.isEmpty {
             let framesPerBuffer: AVAudioFrameCount = 8192
             guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: framesPerBuffer) else { return }
