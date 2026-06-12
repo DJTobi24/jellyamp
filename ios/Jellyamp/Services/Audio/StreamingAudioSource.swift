@@ -20,6 +20,8 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
     private let startTime: TimeInterval
     private let fileTypeHint: AudioFileTypeID
     private var loggedFirstBytes = false
+    private var loggedPeak = false
+    private var loggedFill = false
     private let queue = DispatchQueue(label: "dev.djtobi.Jellyamp.afs")
     private let log = Logger(subsystem: "dev.djtobi.Jellyamp", category: "Streaming")
 
@@ -211,12 +213,29 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
         while pendingFrames < targetFrames, !packets.isEmpty {
             let framesPerBuffer: AVAudioFrameCount = 8192
             guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: framesPerBuffer) else { return }
+            // Advertise the full capacity to the converter: a fresh buffer has
+            // frameLength 0, which makes the output list's mDataByteSize 0, so
+            // the converter sees no room and writes nothing (packetCount stays
+            // 0 → silence). Reset to the produced count after the call.
+            buffer.frameLength = framesPerBuffer
             var packetCount = framesPerBuffer   // PCM: 1 frame per packet
             let context = Unmanaged.passUnretained(self).toOpaque()
             let status = AudioConverterFillComplexBuffer(converter, converterInputCallback, context,
                                                          &packetCount, buffer.mutableAudioBufferList, nil)
+            if !loggedFill {
+                loggedFill = true
+                log.info("fill: status=\(status, privacy: .public) packetCount=\(packetCount, privacy: .public) packetsLeft=\(self.packets.count, privacy: .public)")
+            }
             if packetCount == 0 { return }      // ran out of input for now (need more bytes)
             buffer.frameLength = packetCount
+            if !loggedPeak {
+                loggedPeak = true
+                var peak: Float = 0
+                if let channel = buffer.floatChannelData {
+                    for frame in 0..<Int(packetCount) { peak = max(peak, abs(channel[0][frame])) }
+                }
+                log.info("first decoded buffer: \(packetCount, privacy: .public) frames, peak \(peak, privacy: .public)")
+            }
             let frames = buffer.frameLength
             pendingFrames += frames
             node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in

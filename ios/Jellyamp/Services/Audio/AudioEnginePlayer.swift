@@ -281,6 +281,7 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
         }
         applyEffectiveVolume()
         chain.player.play()
+        log.info("play node: engineRunning=\(self.engine.isRunning, privacy: .public) nodePlaying=\(chain.player.isPlaying, privacy: .public) vol=\(chain.player.volume, privacy: .public) mixerOut=\(self.engine.mainMixerNode.outputVolume, privacy: .public)")
     }
 
     private func chainFinished(_ chain: Chain, generation: Int) {
