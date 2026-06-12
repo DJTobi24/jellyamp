@@ -5,22 +5,23 @@ import JellyampCore
 import JellyfinBackend
 
 /// `AVAudioEngine`-based player: two `AVAudioPlayerNode` chains feed one mixer,
-/// so they **mix** — enabling a real, audible crossfade (unlike two separate
-/// `AVPlayer`s, which iOS won't sum). Tracks play from a local file (offline
-/// download or the streaming cache), since the engine can't stream like
-/// `AVPlayer`; the next track is preloaded so transitions stay seamless.
+/// so they **mix** — enabling a real, audible crossfade (two separate
+/// `AVPlayer`s won't sum). Audio is decoded progressively from the network with
+/// `StreamingAudioSource` (no full download; falls back to a cached download if
+/// the remote isn't readable progressively). The next track is prepared so
+/// transitions stay seamless. Graphic EQ works on each chain.
 ///
-/// This is the ADR-0002 path. The simpler `EnginePlayer` (AVPlayer) remains in
-/// the codebase as a one-line fallback in `DependencyContainer`.
+/// The simpler `EnginePlayer` (AVPlayer) stays as a one-line fallback in
+/// `DependencyContainer`.
 final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
     @Published private(set) var state: PlaybackState = .idle
     private(set) var currentTime: TimeInterval = 0
 
     private final class Chain {
         let scheduler: TrackSchedulerNode
-        var file: AVAudioFile?
-        var startOffset: TimeInterval = 0      // seconds the scheduled segment starts at
-        var generation = 0                     // ignore completions from replaced schedules
+        var source: StreamingAudioSource?
+        var startOffset: TimeInterval = 0
+        var generation = 0
         var player: AVAudioPlayerNode { scheduler.player }
         init(engine: AVAudioEngine) {
             scheduler = TrackSchedulerNode(engine: engine)
@@ -55,16 +56,15 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
     private var monotonicNow: TimeInterval { Date().timeIntervalSinceReferenceDate }
 
     private var fadePlanner: SweetFadePlanner
-    private enum Transition: Equatable { case none, preloading(String), crossfading }
+    private enum Transition: Equatable { case none, crossfading }
     private var transition: Transition = .none
     private var crossfadeStart: TimeInterval = 0
     private var crossfadeOverlap: TimeInterval = 0
     private var incomingTrack: Track?
     private var incomingLoudness: Float = 1.0
-    private var preloadedID: String?
 
     private var ticker: Timer?
-    private var startGeneration = 0   // bumped on every explicit (re)start
+    private var startGeneration = 0
 
     private let log = Logger(subsystem: "dev.djtobi.Jellyamp", category: "Playback")
 
@@ -80,7 +80,7 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
         self.chainB = Chain(engine: engine)
         super.init()
         engine.prepare()
-        log.info("AudioEnginePlayer init: server=\(session.serverURL.absoluteString, privacy: .public)")
+        log.info("AudioEnginePlayer init (progressive streaming)")
     }
 
     deinit { ticker?.invalidate() }
@@ -114,10 +114,15 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
     }
 
     func seek(to time: TimeInterval) {
-        guard let file = active.file else { return }
+        guard let track = queue.currentTrack else { return }
         cancelTransition()
-        scheduleAndPlay(active, file: file, fromSeconds: time)
+        let generation = bumpStartGeneration()
         currentTime = time
+        Task { [weak self] in
+            guard let self else { return }
+            let source = await self.makeSource(for: track, startTime: time)
+            await self.finishStart(generation: generation, track: track, source: source, startOffset: time)
+        }
     }
 
     func skipToNext() {
@@ -232,61 +237,46 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
         let generation = bumpStartGeneration()
         Task { [weak self] in
             guard let self else { return }
-            let url = await self.resolveLocalURL(for: track)
-            await self.finishStart(generation: generation, track: track, url: url)
+            let source = await self.makeSource(for: track, startTime: 0)
+            await self.finishStart(generation: generation, track: track, source: source, startOffset: 0)
         }
     }
 
     @MainActor
-    private func finishStart(generation: Int, track: Track, url: URL?) {
-        guard startGeneration == generation else { return }
-        guard let url else {
+    private func finishStart(generation: Int, track: Track, source: StreamingAudioSource?, startOffset: TimeInterval) {
+        guard startGeneration == generation else { source?.stop(); return }
+        guard let source else {
             publish(state: .failed(trackID: track.id, message: "Couldn't load track."), track: track)
             return
         }
-        beginPlay(track, url: url, on: active)
-    }
-
-    private func beginPlay(_ track: Track, url: URL, on chain: Chain) {
-        activateSession()
-        guard let file = openFile(url) else {
-            publish(state: .failed(trackID: track.id, message: "Couldn't open audio (unsupported format?)."), track: track)
-            return
-        }
-        chain.file = file
-        startEngineIfNeeded()
-        scheduleAndPlay(chain, file: file, fromSeconds: 0)
-        applyEffectiveVolume()
+        play(track, source: source, on: active, startOffset: startOffset)
         publish(state: .playing(trackID: track.id), track: track)
         startTicker()
         sendStartReports(for: track)
-        preloadedID = nil
     }
 
-    /// Schedules `file` from `fromSeconds` on a chain and starts the node.
-    private func scheduleAndPlay(_ chain: Chain, file: AVAudioFile, fromSeconds: TimeInterval) {
+    /// Attaches a source to a chain and starts the node.
+    private func play(_ track: Track, source: StreamingAudioSource, on chain: Chain, startOffset: TimeInterval) {
+        activateSession()
+        startEngineIfNeeded()
+        chain.source?.stop()
+        chain.source = source
+        chain.startOffset = startOffset
         let generation = chain.generation + 1
         chain.generation = generation
-        chain.startOffset = fromSeconds
-        let sampleRate = file.processingFormat.sampleRate
-        let startFrame = AVAudioFramePosition(max(0, fromSeconds) * sampleRate)
-        let frames = AVAudioFrameCount(max(0, file.length - startFrame))
-        // Match the chain's input format to the file so varying sample rates
-        // play correctly. Safe: the chain isn't producing output mid-reconnect.
-        engine.connect(chain.player, to: chain.scheduler.eq, format: file.processingFormat)
         chain.player.stop()
-        guard frames > 0 else { return }
-        chain.player.scheduleSegment(file, startingFrame: startFrame, frameCount: frames, at: nil,
-                                     completionCallbackType: .dataPlayedBack) { [weak self] _ in
+        engine.connect(chain.player, to: chain.scheduler.eq, format: source.format)
+        if let eqPreset { chain.scheduler.apply(preset: eqPreset) }
+        startEngineIfNeeded()
+        source.beginScheduling(on: chain.player) { [weak self] in
             DispatchQueue.main.async { self?.chainFinished(chain, generation: generation) }
         }
-        startEngineIfNeeded()
+        applyEffectiveVolume()
         chain.player.play()
     }
 
     private func chainFinished(_ chain: Chain, generation: Int) {
-        guard chain.generation == generation else { return }   // stale (replaced/seeked)
-        guard chain === active, transition == .none else { return }
+        guard chain.generation == generation, chain === active, transition == .none else { return }
         trackFinished()
     }
 
@@ -300,6 +290,8 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
 
     private func stop() {
         intendsToPlay = false
+        active.source?.stop()
+        idle.source?.stop()
         active.player.stop()
         idle.player.stop()
         publish(state: .idle, track: nil)
@@ -310,8 +302,7 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
     // MARK: - Crossfade / preload (driven by the ticker)
 
     private func tick() {
-        guard let file = active.file else { return }
-        let duration = Double(file.length) / file.processingFormat.sampleRate
+        guard let duration = active.source?.duration, duration > 0 else { return }
         let position = currentSeconds(of: active)
         currentTime = min(position, duration)
         stateModel?.currentTime = currentTime
@@ -325,14 +316,7 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
         let overlap = fadePlanner.decision(outgoing: current, incoming: next, trailingSilence: 0, isManualSkip: false).overlap
         if overlap > 0, remaining <= overlap {
             beginCrossfade(to: next, overlap: overlap)
-        } else if remaining <= overlap + 6, preloadedID != next.id {
-            preload(next)               // warm the cache so the fade/handoff is instant
         }
-    }
-
-    private func preload(_ next: Track) {
-        preloadedID = next.id
-        Task { [weak self] in _ = await self?.resolveLocalURL(for: next) }
     }
 
     private func beginCrossfade(to next: Track, overlap: TimeInterval) {
@@ -344,26 +328,36 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
         let generation = startGeneration
         Task { [weak self] in
             guard let self else { return }
-            let url = await self.resolveLocalURL(for: next)
-            await self.startIncoming(generation: generation, next: next, url: url, overlap: overlap)
+            let source = await self.makeSource(for: next, startTime: 0)
+            await self.startIncoming(generation: generation, next: next, source: source, overlap: overlap)
         }
     }
 
     @MainActor
-    private func startIncoming(generation: Int, next: Track, url: URL?, overlap: TimeInterval) {
-        guard transition == .crossfading, startGeneration == generation else { return }
-        guard let url, let file = openFile(url) else { cancelTransition(); return }
+    private func startIncoming(generation: Int, next: Track, source: StreamingAudioSource?, overlap: TimeInterval) {
+        guard transition == .crossfading, startGeneration == generation else { source?.stop(); return }
+        guard let source else { cancelTransition(); return }
         let chain = idle
-        chain.file = file
+        chain.source?.stop()
+        chain.source = source
+        chain.startOffset = 0
+        let generation = chain.generation + 1
+        chain.generation = generation
+        chain.player.stop()
         chain.player.volume = 0
+        engine.connect(chain.player, to: chain.scheduler.eq, format: source.format)
+        if let eqPreset { chain.scheduler.apply(preset: eqPreset) }
         startEngineIfNeeded()
-        scheduleAndPlay(chain, file: file, fromSeconds: 0)
+        source.beginScheduling(on: chain.player) { [weak self] in
+            DispatchQueue.main.async { self?.chainFinished(chain, generation: generation) }
+        }
+        chain.player.play()
         crossfadeStart = monotonicNow
         log.info("crossfade → \"\(next.title, privacy: .public)\" over \(overlap, privacy: .public)s")
     }
 
     private func driveCrossfade() {
-        guard crossfadeStart > 0 else { return }   // incoming not started yet
+        guard crossfadeStart > 0 else { return }
         let progress = crossfadeOverlap > 0 ? (monotonicNow - crossfadeStart) / crossfadeOverlap : 1
         let fade = Float(sleepTimer.fadeGain(now: monotonicNow))
         active.player.volume = clamp(masterVolume * loudnessGain * fade * Float(CrossfadeCurve.fadeOutGain(progress: progress)))
@@ -373,8 +367,9 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
 
     private func finishCrossfade() {
         guard transition == .crossfading, let next = incomingTrack else { return }
+        active.source?.stop()
         active.player.stop()
-        active.file = nil
+        active.source = nil
         activeIsA.toggle()
         loudnessGain = incomingLoudness
         transition = .none
@@ -389,8 +384,9 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
 
     private func cancelTransition() {
         guard transition != .none else { return }
+        idle.source?.stop()
         idle.player.stop()
-        idle.file = nil
+        idle.source = nil
         transition = .none
         incomingTrack = nil
         applyEffectiveVolume()
@@ -419,18 +415,21 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
             preampDB: settings.loudnessPreampDB))
     }
 
-    private func openFile(_ url: URL) -> AVAudioFile? {
-        do { return try AVAudioFile(forReading: url) }
-        catch { log.error("AVAudioFile open failed: \(error.localizedDescription, privacy: .public)"); return nil }
-    }
-
-    /// Local file for a track: offline download first, else the streaming cache
-    /// (downloads the original file once, then reuses it).
-    private func resolveLocalURL(for track: Track) async -> URL? {
-        if let offline = DownloadStore.localURL(for: track) { return offline }
+    /// Builds a streaming source for a track: progressive remote first; if that
+    /// can't start, fall back to a cached download and read that locally.
+    /// Offline downloads play straight from the local file.
+    private func makeSource(for track: Track, startTime: TimeInterval) async -> StreamingAudioSource? {
+        if let offline = DownloadStore.localURL(for: track) {
+            return await StreamingAudioSource.make(url: offline, startTime: startTime)
+        }
         let request = settings.playbackProfile.profile.request(for: track, network: .wifi)
         let remote = StreamURLBuilder.url(for: track.id, request: request, session: session)
-        return try? await cache.localFile(for: track.id, remoteURL: remote)
+        if let streamed = await StreamingAudioSource.make(url: remote, startTime: startTime) {
+            return streamed
+        }
+        log.info("progressive read unavailable; falling back to cached download for \(track.title, privacy: .public)")
+        guard let cached = try? await cache.localFile(for: track.id, remoteURL: remote) else { return nil }
+        return await StreamingAudioSource.make(url: cached, startTime: startTime)
     }
 
     private func bumpStartGeneration() -> Int { startGeneration += 1; return startGeneration }
