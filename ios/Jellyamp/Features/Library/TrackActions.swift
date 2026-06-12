@@ -58,6 +58,9 @@ private struct CollectionActionButtons: View {
         Button {
             run { container.player?.enqueue($0) }
         } label: { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+        Button {
+            run { container.downloads?.download($0) }
+        } label: { Label("Download", systemImage: "arrow.down.circle") }
     }
 
     private func run(_ action: @escaping ([Track]) -> Void) {
@@ -123,6 +126,17 @@ private struct TrackActionButtons: View {
             Button {
                 container.pendingPlaylistTrack = track
             } label: { Label("Add to Playlist…", systemImage: "text.badge.plus") }
+            if let downloads = container.downloads {
+                if downloads.isDownloaded(track.id) {
+                    Button(role: .destructive) {
+                        downloads.remove(track)
+                    } label: { Label("Remove Download", systemImage: "trash") }
+                } else {
+                    Button {
+                        downloads.download(track)
+                    } label: { Label("Download", systemImage: "arrow.down.circle") }
+                }
+            }
         }
     }
 

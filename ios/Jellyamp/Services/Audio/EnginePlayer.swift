@@ -246,14 +246,19 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
 
         let profile = settings.playbackProfile.profile
         let request = profile.request(for: track, network: .wifi)
-        let url = StreamURLBuilder.url(for: track.id, request: request, session: session)
-
-        log.info("""
-        startPlayback: "\(track.title, privacy: .public)" id=\(track.id, privacy: .public) \
-        codec=\(track.codec ?? "nil", privacy: .public) container=\(track.container ?? "nil", privacy: .public) \
-        bitrate=\(track.bitrate ?? -1, privacy: .public) request=\(self.describe(request), privacy: .public)
-        """)
-        log.info("stream URL: \(url.absoluteString, privacy: .public)")
+        let url: URL
+        if let local = DownloadStore.localURL(for: track) {
+            url = local
+            log.info("startPlayback (offline): \"\(track.title, privacy: .public)\" id=\(track.id, privacy: .public)")
+        } else {
+            url = StreamURLBuilder.url(for: track.id, request: request, session: session)
+            log.info("""
+            startPlayback: "\(track.title, privacy: .public)" id=\(track.id, privacy: .public) \
+            codec=\(track.codec ?? "nil", privacy: .public) container=\(track.container ?? "nil", privacy: .public) \
+            bitrate=\(track.bitrate ?? -1, privacy: .public) request=\(self.describe(request), privacy: .public)
+            """)
+            log.info("stream URL: \(url.absoluteString, privacy: .public)")
+        }
 
         let item = AVPlayerItem(url: url)
         observe(item: item, track: track)
