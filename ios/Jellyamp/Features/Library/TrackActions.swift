@@ -120,6 +120,9 @@ private struct TrackActionButtons: View {
             Button {
                 startInstantMix()
             } label: { Label("Instant Mix", systemImage: "wand.and.stars") }
+            Button {
+                container.pendingPlaylistTrack = track
+            } label: { Label("Add to Playlist…", systemImage: "text.badge.plus") }
         }
     }
 

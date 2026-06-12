@@ -16,6 +16,9 @@ public protocol MusicLibraryProviding: Sendable {
     func favoriteTracks(limit: Int) async throws -> [Track]
     func lyrics(forTrack trackID: String) async throws -> LyricsTimeline?
     func genres() async throws -> [Genre]
+    @discardableResult
+    func createPlaylist(name: String, itemIDs: [String]) async throws -> String
+    func addToPlaylist(playlistID: String, itemIDs: [String]) async throws
     func playlists() async throws -> [Playlist]
     func tracks(inPlaylist playlistID: String) async throws -> [Track]
     func recentlyAddedAlbums(limit: Int) async throws -> [Album]
@@ -98,6 +101,40 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "sortBy", value: "Album,ParentIndexNumber,IndexNumber"),
         ])
         return response.Items.map(DTOMapper.track(from:))
+    }
+
+    /// Creates a playlist seeded with the given tracks; returns its new ID.
+    @discardableResult
+    public func createPlaylist(name: String, itemIDs: [String]) async throws -> String {
+        struct CreateResponse: Decodable { let Id: String }
+        let request = session.request(
+            path: "Playlists",
+            query: [
+                URLQueryItem(name: "name", value: name),
+                URLQueryItem(name: "userId", value: session.userID ?? ""),
+                URLQueryItem(name: "ids", value: itemIDs.joined(separator: ",")),
+                URLQueryItem(name: "mediaType", value: "Audio"),
+            ],
+            method: "POST"
+        )
+        let response: CreateResponse = try await execute(request)
+        return response.Id
+    }
+
+    /// Appends tracks to an existing playlist.
+    public func addToPlaylist(playlistID: String, itemIDs: [String]) async throws {
+        let request = session.request(
+            path: "Playlists/\(playlistID)/Items",
+            query: [
+                URLQueryItem(name: "ids", value: itemIDs.joined(separator: ",")),
+                URLQueryItem(name: "userId", value: session.userID ?? ""),
+            ],
+            method: "POST"
+        )
+        let (_, response) = try await transport.send(request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw JellyfinError.serverError(status: response.statusCode)
+        }
     }
 
     /// The user's favorited ("liked") tracks.

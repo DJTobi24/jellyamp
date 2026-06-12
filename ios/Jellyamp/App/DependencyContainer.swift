@@ -11,6 +11,9 @@ final class DependencyContainer: ObservableObject {
     @Published private(set) var session: JellyfinSession?
     @Published private(set) var sonicCapabilities = SonicCapabilities(capabilities: [])
     @Published var settings = AppSettings()
+    /// Set to present the "Add to Playlist" sheet for a track (driven from the
+    /// track ⋯ menu, which can't present a sheet itself).
+    @Published var pendingPlaylistTrack: Track?
 
     private(set) var library: MusicLibraryProviding?
     private(set) var sonic: SonicProviding?

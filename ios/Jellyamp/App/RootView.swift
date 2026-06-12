@@ -31,6 +31,10 @@ struct RootView: View {
         }
         .tint(.white)
         .tabBarMinimizesOnScroll()
+        .sheet(item: $container.pendingPlaylistTrack) { track in
+            AddToPlaylistView(track: track)
+                .environmentObject(container)
+        }
     }
 }
 
