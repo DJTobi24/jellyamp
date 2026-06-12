@@ -146,6 +146,7 @@ final class DependencyContainer: ObservableObject {
 
     func saveSettings() {
         settingsStore.save(settings)
+        player?.updateSettings(settings)
     }
 
     private static func persistentDeviceID() -> String {

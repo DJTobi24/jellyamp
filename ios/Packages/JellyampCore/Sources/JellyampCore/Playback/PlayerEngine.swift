@@ -49,4 +49,7 @@ public protocol PlayerEngine: AnyObject {
     func cycleRepeatMode()
     /// Shuffle-play a fresh set of tracks, starting from a random one.
     func playShuffled(_ tracks: [Track])
+
+    /// Push updated settings (crossfade duration, loudness, …) to the engine.
+    func updateSettings(_ settings: AppSettings)
 }
