@@ -50,13 +50,17 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
     private var shuffleEnabled = false
     private var preferredRepeatMode: RepeatMode = .off
 
-    // Crossfade / preload.
+    // Crossfade / preload. The crossfade ramp is driven by the *outgoing*
+    // (active) player's periodic observer — which ticks reliably — while the
+    // incoming player fades up on the idle player. We only switch `active` to
+    // the incoming player once the fade completes.
     private var fadePlanner: SweetFadePlanner
     private enum Transition: Equatable { case none, preloaded(Track), crossfading }
     private var transition: Transition = .none
     private var crossfadeStart: TimeInterval = 0
     private var crossfadeOverlap: TimeInterval = 0
-    private var outgoingPlayer: AVPlayer?
+    private var incomingTrack: Track?
+    private var incomingLoudness: Float = 1.0
     private var outgoingLoudness: Float = 1.0
 
     private let log = Logger(subsystem: "dev.djtobi.Jellyamp", category: "Playback")
@@ -108,7 +112,7 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         log.info("pause() tapped — state=\(self.describe(self.state), privacy: .public)")
         intendsToPlay = false
         activePlayer.pause()
-        outgoingPlayer?.pause()
+        idlePlayer.pause()
     }
 
     func seek(to time: TimeInterval) {
@@ -319,42 +323,48 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         transition = .crossfading
         crossfadeStart = monotonicNow
         crossfadeOverlap = overlap
-        outgoingPlayer = activePlayer
         outgoingLoudness = loudnessGain
+        incomingTrack = next
+        incomingLoudness = gain(for: next)
 
+        // Start the incoming track silently on the idle player; the active
+        // (outgoing) player stays active and keeps driving the ramp via its
+        // periodic observer. We switch over only when the fade completes.
         let incoming = idlePlayer
-        let item = makeItem(for: next)
-        incoming.replaceCurrentItem(with: item)
+        incoming.replaceCurrentItem(with: makeItem(for: next))
         incoming.volume = 0
         activateSessionIfNeeded()
         incoming.play()
-
-        // The incoming player becomes active; rebind observers and advance.
-        activeIsA.toggle()
-        loudnessGain = gain(for: next)
-        observeActiveItem(item, track: next)
-        bindActiveObservers()
-        queue.advance()
-        publish(state: .playing(trackID: next.id), track: next)
-        publishQueue()
-        sendStartReports(for: next)
     }
 
     private func driveCrossfade() {
+        guard transition == .crossfading else { return }
         let progress = crossfadeOverlap > 0 ? (monotonicNow - crossfadeStart) / crossfadeOverlap : 1
         let fade = Float(sleepTimer.fadeGain(now: monotonicNow))
-        activePlayer.volume = clamp(masterVolume * loudnessGain * fade * Float(CrossfadeCurve.fadeInGain(progress: progress)))
-        outgoingPlayer?.volume = clamp(masterVolume * outgoingLoudness * fade * Float(CrossfadeCurve.fadeOutGain(progress: progress)))
+        // active = outgoing (fades out), idle = incoming (fades in).
+        activePlayer.volume = clamp(masterVolume * outgoingLoudness * fade * Float(CrossfadeCurve.fadeOutGain(progress: progress)))
+        idlePlayer.volume = clamp(masterVolume * incomingLoudness * fade * Float(CrossfadeCurve.fadeInGain(progress: progress)))
         if progress >= 1 { finishCrossfade() }
     }
 
     private func finishCrossfade() {
-        outgoingPlayer?.pause()
-        outgoingPlayer?.replaceCurrentItem(with: nil)
-        outgoingPlayer = nil
+        guard transition == .crossfading, let next = incomingTrack else { return }
+        let previousActive = activePlayer
+        activeIsA.toggle()                       // active is now the incoming player
+        loudnessGain = incomingLoudness
+        loggedFirstTick = false
+        if let item = activePlayer.currentItem { observeActiveItem(item, track: next) }
+        bindActiveObservers()
+        queue.advance()
+        previousActive.pause()
+        previousActive.replaceCurrentItem(with: nil)
         transition = .none
+        incomingTrack = nil
         applyEffectiveVolume()
-        log.info("crossfade complete")
+        publish(state: .playing(trackID: next.id), track: next)
+        publishQueue()
+        sendStartReports(for: next)
+        log.info("crossfade complete → now playing \"\(next.title, privacy: .public)\"")
     }
 
     /// Buffers the next track on the idle player so the hand-off at end-of-track
@@ -401,16 +411,13 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
     }
 
     private func cancelTransition() {
-        if let outgoing = outgoingPlayer {
-            outgoing.pause()
-            outgoing.replaceCurrentItem(with: nil)
-            outgoingPlayer = nil
-        }
-        if transition != .none {
-            idlePlayer.pause()
-            idlePlayer.replaceCurrentItem(with: nil)
-        }
+        guard transition != .none else { return }
+        // The incoming track is always on the idle player; drop it.
+        idlePlayer.pause()
+        idlePlayer.replaceCurrentItem(with: nil)
         transition = .none
+        incomingTrack = nil
+        applyEffectiveVolume()
     }
 
     // MARK: - Observation
@@ -516,6 +523,11 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
             finishToIdle()
             return
         }
+        if transition == .crossfading {
+            // The outgoing track ended before the fade finished — complete now.
+            finishCrossfade()
+            return
+        }
         if case .preloaded(let next) = transition {
             completePreloadHandoff(to: next)
             return
@@ -549,9 +561,10 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         if sleepTimer.shouldStop(now: monotonicNow) {
             log.info("sleep timer elapsed — pausing")
             sleepTimer.cancel()
+            cancelTransition()
             intendsToPlay = false
             activePlayer.pause()
-            outgoingPlayer?.pause()
+            idlePlayer.pause()
         }
         if transition != .crossfading { applyEffectiveVolume() }
         publishSleepTimer()
