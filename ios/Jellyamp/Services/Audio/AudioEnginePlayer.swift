@@ -459,7 +459,14 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject {
 
     private func startEngineIfNeeded() {
         guard !engine.isRunning else { return }
-        do { try engine.start() } catch { log.error("engine.start failed: \(error.localizedDescription, privacy: .public)") }
+        activateSession()        // engine can only start against an active session
+        engine.prepare()         // re-evaluate the output format now the session is active
+        do {
+            try engine.start()
+            log.info("engine started: isRunning=\(self.engine.isRunning, privacy: .public)")
+        } catch {
+            log.error("engine.start failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func activateSession() {
