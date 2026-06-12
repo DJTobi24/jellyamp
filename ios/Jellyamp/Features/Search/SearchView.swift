@@ -41,25 +41,19 @@ struct SearchView: View {
                     Section("Tracks") {
                         ForEach(tracks) { track in
                             HStack(spacing: 12) {
-                                Button {
-                                    container.player?.load(queue: PlayQueue(tracks: [track]))
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 44)
-                                        VStack(alignment: .leading) {
-                                            Text(track.title).lineLimit(1)
-                                            Text(track.artistName)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(1)
-                                        }
-                                        Spacer(minLength: 0)
-                                    }
-                                    .contentShape(Rectangle())
+                                ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 44)
+                                VStack(alignment: .leading) {
+                                    Text(track.title).lineLimit(1)
+                                    Text(track.artistName)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
-                                .buttonStyle(.plain)
+                                Spacer(minLength: 0)
                                 TrackMenuButton(track: track)
                             }
+                            .contentShape(Rectangle())
+                            .onTapGesture { container.player?.load(queue: PlayQueue(tracks: [track])) }
                             .trackContextActions(track)
                         }
                     }

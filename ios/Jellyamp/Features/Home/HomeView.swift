@@ -72,13 +72,30 @@ struct HomeView: View {
     }
 
     private func load() async {
+        let cache = container.libraryCache
+        // Paint last-known content immediately so the screen isn't empty while
+        // the network round-trips.
+        if let cached = cache?.load([Album].self, for: LibraryCacheKey.recentAlbums) { recentAlbums = cached }
+        if let cached = cache?.load([Track].self, for: LibraryCacheKey.recentTracks) { recentTracks = cached }
+        if let cached = cache?.load([MixDescriptor].self, for: LibraryCacheKey.mixes) { mixes = cached }
+
+        // Refresh in the background; only replace + re-cache on success, so a
+        // failed request keeps the cached content on screen.
         guard let library = container.library else { return }
-        recentAlbums = (try? await library.recentlyAddedAlbums(limit: 20)) ?? []
-        recentTracks = (try? await library.recentlyPlayedTracks(limit: 20)) ?? []
+        if let albums = try? await library.recentlyAddedAlbums(limit: 20) {
+            recentAlbums = albums
+            cache?.save(albums, for: LibraryCacheKey.recentAlbums)
+        }
+        if let tracks = try? await library.recentlyPlayedTracks(limit: 20) {
+            recentTracks = tracks
+            cache?.save(tracks, for: LibraryCacheKey.recentTracks)
+        }
         if container.sonicCapabilities.supports(.mixes),
            let sonic = container.sonic,
-           let userID = container.session?.userID {
-            mixes = (try? await sonic.mixes(forUser: userID)) ?? []
+           let userID = container.session?.userID,
+           let fresh = try? await sonic.mixes(forUser: userID) {
+            mixes = fresh
+            cache?.save(fresh, for: LibraryCacheKey.mixes)
         }
     }
 }

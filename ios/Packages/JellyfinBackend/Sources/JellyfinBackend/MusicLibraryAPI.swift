@@ -13,6 +13,8 @@ public protocol MusicLibraryProviding: Sendable {
     func artists(startIndex: Int, limit: Int) async throws -> [Artist]
     func albums(byArtist artistID: String) async throws -> [Album]
     func tracks(byArtist artistID: String) async throws -> [Track]
+    func favoriteTracks(limit: Int) async throws -> [Track]
+    func lyrics(forTrack trackID: String) async throws -> LyricsTimeline?
     func genres() async throws -> [Genre]
     func playlists() async throws -> [Playlist]
     func tracks(inPlaylist playlistID: String) async throws -> [Track]
@@ -96,6 +98,23 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "sortBy", value: "Album,ParentIndexNumber,IndexNumber"),
         ])
         return response.Items.map(DTOMapper.track(from:))
+    }
+
+    /// The user's favorited ("liked") tracks.
+    public func favoriteTracks(limit: Int = 500) async throws -> [Track] {
+        let response = try await items(query: [
+            URLQueryItem(name: "filters", value: "IsFavorite"),
+            URLQueryItem(name: "includeItemTypes", value: "Audio"),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "SortName"),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+        return response.Items.map(DTOMapper.track(from:))
+    }
+
+    /// Synced or plain lyrics for a track (Jellyfin 10.9+), or nil if none.
+    public func lyrics(forTrack trackID: String) async throws -> LyricsTimeline? {
+        try await LyricsAPI(session: session, transport: transport).lyrics(forTrack: trackID)
     }
 
     public func genres() async throws -> [Genre] {

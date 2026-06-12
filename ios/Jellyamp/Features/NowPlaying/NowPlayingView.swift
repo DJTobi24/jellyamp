@@ -10,7 +10,9 @@ struct NowPlayingView: View {
     @ObservedObject var playerState: PlayerStateModel
     @Environment(\.dismiss) private var dismiss
     @State private var showQueue = false
+    @State private var showLyrics = false
     @State private var isFavorite = false
+    @State private var volume: Double = 1.0
 
     var body: some View {
         ZStack {
@@ -33,8 +35,38 @@ struct NowPlayingView: View {
                 }
                 ProgressSection(playerState: playerState)
                 PlayerControlsView(playerState: playerState)
-                AirPlayRoutePicker()
-                    .frame(width: 44, height: 44)
+                HStack(spacing: 12) {
+                    Image(systemName: "speaker.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: Binding(
+                            get: { volume },
+                            set: { volume = $0; container.player?.setVolume($0) }
+                        ),
+                        in: 0...1
+                    )
+                    .tint(.white)
+                    Image(systemName: "speaker.wave.3.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal)
+                HStack(spacing: 40) {
+                    AirPlayRoutePicker()
+                        .frame(width: 44, height: 44)
+                    Button {
+                        showLyrics = true
+                    } label: {
+                        Image(systemName: "quote.bubble")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(playerState.currentTrack == nil)
+                }
                 Spacer(minLength: 8)
             }
             .padding()
@@ -42,6 +74,12 @@ struct NowPlayingView: View {
         .sheet(isPresented: $showQueue) {
             QueueView(playerState: playerState)
                 .environmentObject(container)
+        }
+        .sheet(isPresented: $showLyrics) {
+            if let track = playerState.currentTrack {
+                LyricsView(playerState: playerState, track: track)
+                    .environmentObject(container)
+            }
         }
     }
 
@@ -166,16 +204,95 @@ struct QueueView: View {
                                 container.player?.removeUpNext(at: index)
                             }
                         }
+                        .onMove { offsets, destination in
+                            container.player?.moveUpNext(fromOffsets: offsets, toOffset: destination)
+                        }
                     }
                 }
             }
             .listStyle(.plain)
             .navigationTitle("Queue")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    EditButton()
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+}
+
+/// Full-screen lyrics. Synced lyrics highlight + auto-scroll the active line
+/// (driven off the player clock); plain lyrics just scroll.
+struct LyricsView: View {
+    @EnvironmentObject private var container: DependencyContainer
+    @ObservedObject var playerState: PlayerStateModel
+    @Environment(\.dismiss) private var dismiss
+    let track: Track
+    @State private var timeline: LyricsTimeline?
+    @State private var loaded = false
+
+    private var activeIndex: Int? {
+        timeline?.activeLineIndex(at: playerState.currentTime)
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            BlurredArtBackground(track: track)
+            content
+            HStack {
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.title3.bold())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal)
+        }
+        .task {
+            timeline = try? await container.library?.lyrics(forTrack: track.id)
+            loaded = true
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        if let timeline, !timeline.lines.isEmpty {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(Array(timeline.lines.enumerated()), id: \.offset) { index, line in
+                            Text(line.text.isEmpty ? " " : line.text)
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(activeIndex == index ? Color.white : Color.white.opacity(0.45))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .id(index)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 72)
+                    .padding(.bottom, 60)
+                }
+                .task(id: activeIndex) {
+                    guard let activeIndex else { return }
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(activeIndex, anchor: .center)
+                    }
+                }
+            }
+        } else if loaded {
+            ContentUnavailableCompatView(
+                title: "No Lyrics",
+                systemImage: "quote.bubble",
+                description: "This track has no lyrics."
+            )
+        } else {
+            ProgressView()
         }
     }
 }
@@ -268,12 +385,19 @@ struct PlayerControlsView: View {
     @ObservedObject var playerState: PlayerStateModel
 
     var body: some View {
-        HStack(spacing: 40) {
+        HStack(spacing: 28) {
+            Button {
+                container.player?.setShuffle(!playerState.isShuffled)
+            } label: {
+                Image(systemName: "shuffle")
+                    .font(.title3)
+                    .foregroundStyle(playerState.isShuffled ? Color.purple : Color.white)
+            }
             Button {
                 container.player?.skipToPrevious()
             } label: {
                 Image(systemName: "backward.fill")
-                    .font(.title3)
+                    .font(.title2)
             }
             Button {
                 playerState.isPlaying ? container.player?.pause() : container.player?.play()
@@ -285,11 +409,18 @@ struct PlayerControlsView: View {
                 container.player?.skipToNext()
             } label: {
                 Image(systemName: "forward.fill")
+                    .font(.title2)
+            }
+            Button {
+                container.player?.cycleRepeatMode()
+            } label: {
+                Image(systemName: playerState.repeatMode == .one ? "repeat.1" : "repeat")
                     .font(.title3)
+                    .foregroundStyle(playerState.repeatMode == .off ? Color.white : Color.purple)
             }
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .glassCapsule()
     }
@@ -321,4 +452,7 @@ final class PlayerStateModel: ObservableObject {
     /// Sleep-timer state for the moon button / countdown in the player.
     @Published var sleepTimerActive = false
     @Published var sleepTimerRemaining: TimeInterval?
+    /// Shuffle / repeat state for the transport buttons.
+    @Published var isShuffled = false
+    @Published var repeatMode: RepeatMode = .off
 }

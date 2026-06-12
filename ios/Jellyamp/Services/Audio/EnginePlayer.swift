@@ -50,6 +50,9 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
     private var intendsToPlay = false
     /// One-shot guard so we log the first real time advance only once.
     private var loggedFirstTick = false
+    /// Shuffle / repeat preferences, persisted across `load(queue:)`.
+    private var shuffleEnabled = false
+    private var preferredRepeatMode: RepeatMode = .off
 
     private let log = Logger(subsystem: "dev.djtobi.Jellyamp", category: "Playback")
 
@@ -80,6 +83,9 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
 
     func load(queue: PlayQueue) {
         log.info("load(queue): count=\(queue.upNext.count + 1, privacy: .public) current=\(queue.currentTrack?.title ?? "nil", privacy: .public)")
+        var queue = queue
+        queue.setRepeatMode(preferredRepeatMode)
+        if shuffleEnabled { queue.shuffle() }
         self.queue = queue
         guard let track = queue.currentTrack else {
             log.error("load(queue): queue has no current track")
@@ -161,6 +167,51 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         publishQueue()
     }
 
+    func moveUpNext(fromOffsets source: IndexSet, toOffset destination: Int) {
+        // A list drag moves a single row; map upNext offsets to absolute queue
+        // indices. `PlayQueue.move` removes-then-inserts, so a downward move
+        // needs the destination shifted by one (SwiftUI `toOffset` semantics).
+        guard let from = source.first else { return }
+        let base = (queue.currentIndex ?? -1) + 1
+        let absoluteFrom = base + from
+        let absoluteTo = base + (destination > from ? destination - 1 : destination)
+        queue.move(from: absoluteFrom, to: absoluteTo)
+        publishQueue()
+    }
+
+    func setShuffle(_ enabled: Bool) {
+        shuffleEnabled = enabled
+        if enabled { queue.shuffle() } else { queue.unshuffle() }
+        log.info("shuffle \(enabled ? "on" : "off", privacy: .public)")
+        publishQueue()
+        publishShuffleRepeat()
+    }
+
+    func cycleRepeatMode() {
+        let next: RepeatMode
+        switch queue.repeatMode {
+        case .off: next = .all
+        case .all: next = .one
+        case .one: next = .off
+        }
+        preferredRepeatMode = next
+        queue.setRepeatMode(next)
+        log.info("repeat → \(String(describing: next), privacy: .public)")
+        publishShuffleRepeat()
+    }
+
+    func playShuffled(_ tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        shuffleEnabled = true
+        var fresh = PlayQueue(tracks: tracks, startAt: Int.random(in: 0..<tracks.count))
+        fresh.setRepeatMode(preferredRepeatMode)
+        fresh.shuffle()
+        queue = fresh
+        log.info("playShuffled \(tracks.count, privacy: .public) track(s)")
+        if let track = queue.currentTrack { startPlayback(of: track) }
+        publishShuffleRepeat()
+    }
+
     func apply(eqPreset: EQPreset) {
         // No-op: a graphic EQ needs an AVAudioEngine graph or an
         // MTAudioProcessingTap, neither of which a plain AVPlayer offers.
@@ -215,6 +266,7 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
         applyEffectiveVolume()
         publish(state: .loading(trackID: track.id), track: track)
         publishQueue()
+        publishShuffleRepeat()
         player.play()
 
         sendStartReports(for: track)
@@ -380,6 +432,11 @@ final class EnginePlayer: NSObject, PlayerEngine, ObservableObject {
     /// Mirrors the upcoming queue into the view model for the Up Next list.
     private func publishQueue() {
         stateModel?.upNext = queue.upNext
+    }
+
+    private func publishShuffleRepeat() {
+        if stateModel?.isShuffled != queue.isShuffled { stateModel?.isShuffled = queue.isShuffled }
+        if stateModel?.repeatMode != queue.repeatMode { stateModel?.repeatMode = queue.repeatMode }
     }
 
     /// Single point that mutates published state — must run on the main thread.

@@ -128,17 +128,21 @@ final class SystemMediaController {
     private func loadArtwork(for track: Track) {
         artworkTrackID = track.id
         guard let url = ImageURLBuilder.trackImageURL(track: track, maxWidth: 600, session: session) else { return }
+        let trackID = track.id
         Task { [weak self] in
             guard let (data, _) = try? await URLSession.shared.data(from: url),
                   let image = UIImage(data: data) else { return }
-            await MainActor.run {
-                guard let self, self.artworkTrackID == track.id else { return }
-                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                info[MPMediaItemPropertyArtwork] = artwork
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-            }
+            await self?.applyArtwork(image, forTrackID: trackID)
         }
+    }
+
+    @MainActor
+    private func applyArtwork(_ image: UIImage, forTrackID trackID: String) {
+        guard artworkTrackID == trackID else { return }
+        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        info[MPMediaItemPropertyArtwork] = artwork
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     private func updatePlaybackState(isPlaying: Bool) {

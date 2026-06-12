@@ -15,6 +15,9 @@ final class DependencyContainer: ObservableObject {
     private(set) var library: MusicLibraryProviding?
     private(set) var sonic: SonicProviding?
     private(set) var player: PlayerEngine?
+    /// Per-user on-disk cache so home shelves / lists paint instantly on launch
+    /// and refresh in the background, instead of reloading from scratch.
+    private(set) var libraryCache: LibraryCache?
     /// Lock screen / Control Center / interruption handling; alive as long
     /// as a session is active.
     private var systemMedia: SystemMediaController?
@@ -47,15 +50,18 @@ final class DependencyContainer: ObservableObject {
 
     func signOut() {
         credentialStore.clear()
+        LibraryCache.clearAll()
         session = nil
         library = nil
         sonic = nil
         player = nil
         systemMedia = nil
+        libraryCache = nil
     }
 
     private func activate(session: JellyfinSession) async {
         self.session = session
+        libraryCache = LibraryCache(scope: session.userID ?? "default")
         library = MusicLibraryAPI(session: session)
         let engine = EnginePlayer(session: session, settings: settings, stateModel: playerState)
         player = engine

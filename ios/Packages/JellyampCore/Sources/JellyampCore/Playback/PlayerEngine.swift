@@ -33,10 +33,20 @@ public protocol PlayerEngine: AnyObject {
     func playUpNext(at upNextIndex: Int)
     /// Remove an upcoming item (index into the current `upNext`).
     func removeUpNext(at upNextIndex: Int)
+    /// Reorder upcoming items (SwiftUI `onMove` offsets into `upNext`).
+    func moveUpNext(fromOffsets source: IndexSet, toOffset destination: Int)
 
     // Sleep timer.
     /// Stop playback after `duration` seconds, or — when nil — at the end of
     /// the current track. Playback fades out over the configured window.
     func startSleepTimer(duration: TimeInterval?)
     func cancelSleepTimer()
+
+    // Shuffle & repeat. Both persist across `load(queue:)` calls.
+    /// Shuffle (keeping the current track) or restore the original order.
+    func setShuffle(_ enabled: Bool)
+    /// Cycle off → all → one → off.
+    func cycleRepeatMode()
+    /// Shuffle-play a fresh set of tracks, starting from a random one.
+    func playShuffled(_ tracks: [Track])
 }
