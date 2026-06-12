@@ -90,6 +90,9 @@ struct AlbumDetailView: View {
     @EnvironmentObject private var container: DependencyContainer
     let album: Album
     @State private var tracks: [Track] = []
+    @State private var searchText = ""
+
+    private var displayed: [Track] { tracks.filtered(by: searchText) }
 
     var body: some View {
         List {
@@ -123,7 +126,7 @@ struct AlbumDetailView: View {
                 .listRowSeparator(.hidden)
             }
             Section {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                ForEach(Array(displayed.enumerated()), id: \.element.id) { index, track in
                     HStack(spacing: 8) {
                         Text("\(track.indexNumber ?? index + 1)")
                             .foregroundStyle(.secondary)
@@ -137,12 +140,15 @@ struct AlbumDetailView: View {
                         TrackMenuButton(track: track)
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture { play(from: index) }
+                    .onTapGesture {
+                        container.player?.load(queue: PlayQueue(tracks: displayed, startAt: index))
+                    }
                     .trackContextActions(track)
                 }
             }
         }
         .listStyle(.plain)
+        .searchable(text: $searchText, prompt: "Search in album")
         .task {
             tracks = (try? await container.library?.tracks(inAlbum: album.id)) ?? []
         }
@@ -218,6 +224,9 @@ struct ArtistDetailView: View {
     @State private var albums: [Album] = []
     @State private var tracks: [Track] = []
     @State private var loaded = false
+    @State private var searchText = ""
+
+    private var displayed: [Track] { tracks.filtered(by: searchText) }
 
     var body: some View {
         List {
@@ -260,7 +269,7 @@ struct ArtistDetailView: View {
             }
             if !tracks.isEmpty {
                 Section("Songs") {
-                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    ForEach(Array(displayed.enumerated()), id: \.element.id) { index, track in
                         HStack(spacing: 8) {
                             Text(track.title).lineLimit(1)
                             Spacer()
@@ -271,7 +280,7 @@ struct ArtistDetailView: View {
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            container.player?.load(queue: PlayQueue(tracks: tracks, startAt: index))
+                            container.player?.load(queue: PlayQueue(tracks: displayed, startAt: index))
                         }
                         .trackContextActions(track)
                     }
@@ -284,6 +293,7 @@ struct ArtistDetailView: View {
         }
         .listStyle(.plain)
         .navigationTitle(artist.name)
+        .searchable(text: $searchText, prompt: "Search \(artist.name)")
         .task {
             guard let library = container.library else { return }
             albums = (try? await library.albums(byArtist: artist.id)) ?? []
@@ -303,55 +313,17 @@ struct LikedSongsView: View {
     @EnvironmentObject private var container: DependencyContainer
     @State private var tracks: [Track] = []
     @State private var loaded = false
+    @State private var searchText = ""
 
     var body: some View {
-        List {
-            if !tracks.isEmpty {
-                HStack {
-                    Button {
-                        container.player?.load(queue: PlayQueue(tracks: tracks, startAt: 0))
-                    } label: {
-                        Label("Play", systemImage: "play.fill")
-                            .foregroundStyle(.black)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Button {
-                        container.player?.playShuffled(tracks)
-                    } label: {
-                        Label("Shuffle", systemImage: "shuffle")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .listRowSeparator(.hidden)
-            }
-            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                HStack(spacing: 8) {
-                    ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 40)
-                    VStack(alignment: .leading) {
-                        Text(track.title).lineLimit(1)
-                        Text(track.artistName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    TrackMenuButton(track: track)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    container.player?.load(queue: PlayQueue(tracks: tracks, startAt: index))
-                }
-                .trackContextActions(track)
-            }
-            if loaded, tracks.isEmpty {
-                Text("No liked songs yet — tap the heart on a track to add it.")
-                    .foregroundStyle(.secondary)
-            }
-        }
+        TrackListContent(
+            tracks: tracks.filtered(by: searchText),
+            isLoaded: loaded,
+            emptyMessage: "No liked songs yet — tap the heart on a track to add it."
+        )
         .listStyle(.plain)
         .navigationTitle("Liked Songs")
+        .searchable(text: $searchText, prompt: "Search liked songs")
         .task {
             tracks = (try? await container.library?.favoriteTracks(limit: 500)) ?? []
             loaded = true
@@ -381,6 +353,33 @@ struct GenreDetailView: View {
     let genre: Genre
     @State private var tracks: [Track] = []
     @State private var loaded = false
+    @State private var searchText = ""
+
+    private var displayed: [Track] { tracks.filtered(by: searchText) }
+
+    var body: some View {
+        TrackListContent(
+            tracks: displayed,
+            isLoaded: loaded,
+            emptyMessage: "No tracks in this genre."
+        )
+        .listStyle(.plain)
+        .navigationTitle(genre.name)
+        .searchable(text: $searchText, prompt: "Search in \(genre.name)")
+        .task {
+            tracks = (try? await container.library?.tracks(inGenre: genre.id)) ?? []
+            loaded = true
+        }
+    }
+}
+
+/// Shared track list with Play/Shuffle header, tap-to-play, ⋯ and context
+/// actions — used by genre / playlist / liked / artist detail views.
+struct TrackListContent: View {
+    @EnvironmentObject private var container: DependencyContainer
+    let tracks: [Track]
+    var isLoaded: Bool = true
+    var emptyMessage: String = "No tracks."
 
     var body: some View {
         List {
@@ -401,6 +400,7 @@ struct GenreDetailView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    CollectionMenuButton(tracks: tracks)
                 }
                 .listRowSeparator(.hidden)
             }
@@ -423,16 +423,21 @@ struct GenreDetailView: View {
                 }
                 .trackContextActions(track)
             }
-            if loaded, tracks.isEmpty {
-                Text("No tracks in this genre.")
-                    .foregroundStyle(.secondary)
+            if isLoaded, tracks.isEmpty {
+                Text(emptyMessage).foregroundStyle(.secondary)
             }
         }
-        .listStyle(.plain)
-        .navigationTitle(genre.name)
-        .task {
-            tracks = (try? await container.library?.tracks(inGenre: genre.id)) ?? []
-            loaded = true
+    }
+}
+
+extension Array where Element == Track {
+    /// Case-insensitive filter over title + artist; empty query keeps all.
+    func filtered(by query: String) -> [Track] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return self }
+        return filter {
+            $0.title.localizedCaseInsensitiveContains(trimmed)
+                || $0.artistName.localizedCaseInsensitiveContains(trimmed)
         }
     }
 }
@@ -547,6 +552,9 @@ struct PlaylistDetailView: View {
     @EnvironmentObject private var container: DependencyContainer
     let playlist: Playlist
     @State private var tracks: [Track] = []
+    @State private var searchText = ""
+
+    private var displayed: [Track] { tracks.filtered(by: searchText) }
 
     var body: some View {
         List {
@@ -584,7 +592,7 @@ struct PlaylistDetailView: View {
                 .listRowSeparator(.hidden)
             }
             Section {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                ForEach(Array(displayed.enumerated()), id: \.element.id) { index, track in
                     HStack(spacing: 8) {
                         ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 40)
                         VStack(alignment: .leading) {
@@ -599,7 +607,7 @@ struct PlaylistDetailView: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        container.player?.load(queue: PlayQueue(tracks: tracks, startAt: index))
+                        container.player?.load(queue: PlayQueue(tracks: displayed, startAt: index))
                     }
                     .trackContextActions(track)
                 }
@@ -607,6 +615,7 @@ struct PlaylistDetailView: View {
         }
         .listStyle(.plain)
         .navigationTitle(playlist.name)
+        .searchable(text: $searchText, prompt: "Search in playlist")
         .task {
             tracks = (try? await container.library?.tracks(inPlaylist: playlist.id)) ?? []
         }

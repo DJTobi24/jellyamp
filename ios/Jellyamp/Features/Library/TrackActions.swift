@@ -82,6 +82,33 @@ private struct TrackContextActions: ViewModifier {
     }
 }
 
+/// Visible "⋯" menu for an already-loaded collection (genre / liked / …):
+/// Play Next, Add to Queue, Download the whole set.
+struct CollectionMenuButton: View {
+    @EnvironmentObject private var container: DependencyContainer
+    let tracks: [Track]
+
+    var body: some View {
+        Menu {
+            Button {
+                container.player?.playNext(tracks)
+            } label: { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+            Button {
+                container.player?.enqueue(tracks)
+            } label: { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+            Button {
+                container.downloads?.download(tracks)
+            } label: { Label("Download", systemImage: "arrow.down.circle") }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.title2)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Visible "⋯" menu for a track row.
 struct TrackMenuButton: View {
     let track: Track
