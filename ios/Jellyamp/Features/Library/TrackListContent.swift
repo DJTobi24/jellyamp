@@ -1,71 +1,55 @@
 import SwiftUI
 import JellyampCore
 
-/// Shared track list with Play/Shuffle header, tap-to-play, ⋯ and context
-/// actions — used by genre / playlist / liked / artist detail views.
+/// Shared list for an already-loaded set of tracks: Play/Shuffle header,
+/// tap-to-play rows with ⋯ / context / VoiceOver actions, a skeleton while
+/// loading and an empty message. For lists that can be large use
+/// `TrackBrowser` (paged) instead.
 struct TrackListContent: View {
     @EnvironmentObject private var container: DependencyContainer
     let tracks: [Track]
     var isLoaded: Bool = true
-    var emptyMessage: String = "No tracks."
+    var emptyMessage: String = String(localized: "No tracks.")
 
     var body: some View {
         List {
+            if !isLoaded, tracks.isEmpty {
+                SkeletonRows()
+            }
             if !tracks.isEmpty {
-                HStack {
-                    Button {
-                        container.player?.load(queue: PlayQueue(tracks: tracks, startAt: 0))
-                    } label: {
-                        Label("Play", systemImage: "play.fill")
-                            .foregroundStyle(.black)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Button {
-                        container.player?.playShuffled(tracks)
-                    } label: {
-                        Label("Shuffle", systemImage: "shuffle")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
+                PlayShuffleBar(
+                    isEnabled: true,
+                    play: { container.player?.load(queue: PlayQueue(tracks: tracks, startAt: 0)) },
+                    shuffle: { container.player?.playShuffled(tracks) }
+                ) {
                     CollectionMenuButton(tracks: tracks)
                 }
                 .listRowSeparator(.hidden)
             }
-            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                HStack(spacing: 8) {
-                    ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 40)
-                    VStack(alignment: .leading) {
-                        Text(track.title).lineLimit(1)
-                        Text(track.artistName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    TrackMenuButton(track: track)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
+            ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
+                TrackRow(track: track) {
                     container.player?.load(queue: PlayQueue(tracks: tracks, startAt: index))
                 }
-                .trackContextActions(track)
             }
             if isLoaded, tracks.isEmpty {
-                Text(emptyMessage).foregroundStyle(.secondary)
+                Text(emptyMessage)
+                    .foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
             }
         }
     }
 }
 
 extension Array where Element == Track {
-    /// Case-insensitive filter over title + artist; empty query keeps all.
+    /// Case-insensitive, diacritic-insensitive filter over title, artist and
+    /// album; an empty query keeps all.
     func filtered(by query: String) -> [Track] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return self }
+        let needle = SearchRanker.normalize(query)
+        guard !needle.isEmpty else { return self }
         return filter {
-            $0.title.localizedCaseInsensitiveContains(trimmed)
-                || $0.artistName.localizedCaseInsensitiveContains(trimmed)
+            SearchRanker.normalize($0.title).contains(needle)
+                || SearchRanker.normalize($0.artistName).contains(needle)
+                || SearchRanker.normalize($0.albumName ?? "").contains(needle)
         }
     }
 }

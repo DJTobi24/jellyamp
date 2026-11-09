@@ -1,27 +1,48 @@
 import SwiftUI
 import JellyampCore
+import JellyfinBackend
 
+/// The albums and songs of one genre, each as a paged list.
 struct GenreDetailView: View {
-    @EnvironmentObject private var container: DependencyContainer
-    let genre: Genre
-    @State private var tracks: [Track] = []
-    @State private var loaded = false
-    @State private var searchText = ""
+    private enum Content: String, CaseIterable, Identifiable {
+        case albums, songs
+        var id: String { rawValue }
+    }
 
-    private var displayed: [Track] { tracks.filtered(by: searchText) }
+    let genre: Genre
+    @State private var content: Content = .albums
 
     var body: some View {
-        TrackListContent(
-            tracks: displayed,
-            isLoaded: loaded,
-            emptyMessage: "No tracks in this genre."
-        )
-        .listStyle(.plain)
-        .navigationTitle(genre.name)
-        .searchable(text: $searchText, prompt: "Search in \(genre.name)")
-        .task {
-            tracks = (try? await container.library?.tracks(inGenre: genre.id)) ?? []
-            loaded = true
+        Group {
+            switch content {
+            case .albums:
+                AlbumBrowser(
+                    filter: BrowseFilter(genreID: genre.id),
+                    emptyMessage: String(localized: "No albums in this genre.")
+                )
+            case .songs:
+                TrackBrowser(
+                    filter: BrowseFilter(genreID: genre.id),
+                    defaultSort: .album,
+                    searchPrompt: String(localized: "Search in \(genre.name)"),
+                    emptyMessage: String(localized: "No songs in this genre."),
+                    playlistTitle: genre.name
+                )
+            }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Picker("Show", selection: $content) {
+                Text("Albums").tag(Content.albums)
+                Text("Songs").tag(Content.songs)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity)
+            .background(.bar)
+        }
+        .navigationTitle(genre.name)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

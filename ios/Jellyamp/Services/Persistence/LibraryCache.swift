@@ -1,38 +1,40 @@
 import Foundation
+import JellyampCore
 
 /// Lightweight on-disk cache for already-fetched library payloads (home
-/// shelves, album/artist lists, …). It lets the app paint the last-known
-/// content instantly on launch and refresh in the background, instead of
-/// showing nothing until every request returns.
+/// shelves, first pages of album/artist lists, …). It lets the app paint the
+/// last-known content instantly on launch and refresh in the background,
+/// instead of showing nothing until every request returns.
 ///
 /// Entries are scoped per Jellyfin user so a different login never reads
 /// another account's data. Stored as JSON in Application Support.
+///
+/// It is a cache, not a store: entries expire after 30 days, a single entry
+/// may not exceed 2 MB (callers cache first pages, never whole libraries),
+/// the directory is capped at 20 MB (oldest files go first), and a file that
+/// cannot be decoded is discarded. The rules live in `BoundedJSONCache`
+/// (JellyampCore), where they are unit-tested.
 final class LibraryCache {
-    private let directory: URL
-    private let scope: String
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private let storage: BoundedJSONCache
+    /// Pruning walks the directory; keep that off the main thread.
+    private let maintenanceQueue = DispatchQueue(label: "dev.djtobi.Jellyamp.LibraryCache", qos: .utility)
 
     /// `scope` identifies the account (the Jellyfin user id).
     init(scope: String) {
-        self.scope = scope
-        directory = Self.baseDirectory
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        storage = BoundedJSONCache(directory: Self.baseDirectory, scope: scope)
     }
 
     func load<T: Decodable>(_ type: T.Type, for key: String) -> T? {
-        guard let data = try? Data(contentsOf: fileURL(for: key)) else { return nil }
-        return try? decoder.decode(T.self, from: data)
+        storage.load(type, for: key)
     }
 
     func save<T: Encodable>(_ value: T, for key: String) {
-        guard let data = try? encoder.encode(value) else { return }
-        try? data.write(to: fileURL(for: key), options: .atomic)
+        guard storage.save(value, for: key) else { return }
+        maintenanceQueue.async { [storage] in storage.prune() }
     }
 
-    private func fileURL(for key: String) -> URL {
-        let safe = "\(scope)-\(key)".replacingOccurrences(of: "/", with: "_")
-        return directory.appendingPathComponent(safe).appendingPathExtension("json")
+    func remove(for key: String) {
+        storage.remove(for: key)
     }
 
     private static var baseDirectory: URL {
@@ -53,4 +55,7 @@ enum LibraryCacheKey {
     static let mixes = "home.mixes"
     static let allAlbums = "library.albums"
     static let allArtists = "library.artists"
+    static let playlists = "library.playlists"
+    static let genres = "library.genres"
+    static let likedSongs = "library.likedSongs"
 }

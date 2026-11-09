@@ -1,24 +1,20 @@
 import SwiftUI
 import JellyampCore
+import JellyfinBackend
 
+/// The user's favorited tracks. Reloads when a song is liked or un-liked
+/// anywhere in the app.
 struct LikedSongsView: View {
-    @EnvironmentObject private var container: DependencyContainer
-    @State private var tracks: [Track] = []
-    @State private var loaded = false
-    @State private var searchText = ""
-
     var body: some View {
-        TrackListContent(
-            tracks: tracks.filtered(by: searchText),
-            isLoaded: loaded,
-            emptyMessage: "No liked songs yet — tap the heart on a track to add it."
+        TrackBrowser(
+            filter: BrowseFilter(favoritesOnly: true),
+            cacheKey: LibraryCacheKey.likedSongs,
+            searchPrompt: String(localized: "Search liked songs"),
+            emptyTitle: String(localized: "No Liked Songs"),
+            emptyMessage: String(localized: "Choose “Add to Liked Songs” from a song’s ⋯ menu to collect it here."),
+            emptySystemImage: "heart",
+            playlistTitle: String(localized: "Liked Songs")
         )
-        .listStyle(.plain)
         .navigationTitle("Liked Songs")
-        .searchable(text: $searchText, prompt: "Search liked songs")
-        .task {
-            tracks = (try? await container.library?.favoriteTracks(limit: 500)) ?? []
-            loaded = true
-        }
     }
 }
