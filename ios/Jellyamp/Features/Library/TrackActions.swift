@@ -8,6 +8,67 @@ extension View {
     func trackContextActions(_ track: Track) -> some View {
         modifier(TrackContextActions(track: track))
     }
+
+    /// Long-press menu for an album cover (Play / Shuffle / Add to Queue).
+    func albumContextActions(_ album: Album) -> some View {
+        modifier(AlbumContextActions(album: album))
+    }
+
+    /// Long-press menu for an artist row (Play / Shuffle / Add to Queue).
+    func artistContextActions(_ artist: Artist) -> some View {
+        modifier(ArtistContextActions(artist: artist))
+    }
+}
+
+private struct AlbumContextActions: ViewModifier {
+    @EnvironmentObject private var container: DependencyContainer
+    let album: Album
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            CollectionActionButtons { try await container.library?.tracks(inAlbum: album.id) ?? [] }
+        }
+    }
+}
+
+private struct ArtistContextActions: ViewModifier {
+    @EnvironmentObject private var container: DependencyContainer
+    let artist: Artist
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            CollectionActionButtons { try await container.library?.tracks(byArtist: artist.id) ?? [] }
+        }
+    }
+}
+
+/// Play / Shuffle / Add-to-Queue for a lazily-fetched set of tracks (album,
+/// artist, …). The tracks are fetched only when an action is chosen.
+private struct CollectionActionButtons: View {
+    @EnvironmentObject private var container: DependencyContainer
+    let tracks: () async throws -> [Track]
+
+    var body: some View {
+        Button {
+            run { container.player?.load(queue: PlayQueue(tracks: $0)) }
+        } label: { Label("Play", systemImage: "play.fill") }
+        Button {
+            run { container.player?.playShuffled($0) }
+        } label: { Label("Shuffle", systemImage: "shuffle") }
+        Button {
+            run { container.player?.enqueue($0) }
+        } label: { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+        Button {
+            run { container.downloads?.download($0) }
+        } label: { Label("Download", systemImage: "arrow.down.circle") }
+    }
+
+    private func run(_ action: @escaping ([Track]) -> Void) {
+        Task {
+            guard let tracks = try? await tracks(), !tracks.isEmpty else { return }
+            action(tracks)
+        }
+    }
 }
 
 private struct TrackContextActions: ViewModifier {
@@ -18,6 +79,61 @@ private struct TrackContextActions: ViewModifier {
         content.contextMenu {
             TrackActionButtons(track: track, includePlay: true)
         }
+    }
+}
+
+/// Heart toggle to save an album / follow an artist (anything with an item id).
+/// Optimistically flips, then writes the favorite state to the server.
+struct FavoriteButton: View {
+    @EnvironmentObject private var container: DependencyContainer
+    let itemID: String
+    @State private var isFavorite: Bool
+
+    init(itemID: String, isFavorite: Bool) {
+        self.itemID = itemID
+        _isFavorite = State(initialValue: isFavorite)
+    }
+
+    var body: some View {
+        Button {
+            isFavorite.toggle()
+            let target = isFavorite
+            Task { try? await container.library?.setFavorite(itemID: itemID, isFavorite: target) }
+        } label: {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                .font(.title2)
+                .foregroundStyle(isFavorite ? Color.pink : Color.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Visible "⋯" menu for an already-loaded collection (genre / liked / …):
+/// Play Next, Add to Queue, Download the whole set.
+struct CollectionMenuButton: View {
+    @EnvironmentObject private var container: DependencyContainer
+    let tracks: [Track]
+
+    var body: some View {
+        Menu {
+            Button {
+                container.player?.playNext(tracks)
+            } label: { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+            Button {
+                container.player?.enqueue(tracks)
+            } label: { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+            Button {
+                container.downloads?.download(tracks)
+            } label: { Label("Download", systemImage: "arrow.down.circle") }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.title2)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -62,6 +178,20 @@ private struct TrackActionButtons: View {
             Button {
                 startInstantMix()
             } label: { Label("Instant Mix", systemImage: "wand.and.stars") }
+            Button {
+                container.pendingPlaylistTrack = track
+            } label: { Label("Add to Playlist…", systemImage: "text.badge.plus") }
+            if let downloads = container.downloads {
+                if downloads.isDownloaded(track.id) {
+                    Button(role: .destructive) {
+                        downloads.remove(track)
+                    } label: { Label("Remove Download", systemImage: "trash") }
+                } else {
+                    Button {
+                        downloads.download(track)
+                    } label: { Label("Download", systemImage: "arrow.down.circle") }
+                }
+            }
         }
     }
 
