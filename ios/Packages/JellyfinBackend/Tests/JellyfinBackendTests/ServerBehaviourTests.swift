@@ -216,4 +216,42 @@ final class ServerBehaviourTests: XCTestCase {
             XCTAssertEqual(transport.requests.count, 1)
         }
     }
+
+    // MARK: Favorites
+
+    func testFavoritesUseTheCurrentRoute() async throws {
+        let transport = ScriptedTransport()
+        transport.on("UserFavoriteItems", json: "{\"IsFavorite\":true}")
+        let library = api(transport)
+        try await library.setFavorite(itemID: "track-1", isFavorite: true)
+        try await library.setFavorite(itemID: "track-1", isFavorite: false)
+        XCTAssertEqual(transport.requests.map { "\($0.httpMethod!) \($0.url!.path)" }, [
+            "POST /UserFavoriteItems/track-1",
+            "DELETE /UserFavoriteItems/track-1",
+        ])
+        XCTAssertEqual(transport.query(0)["userId"], "user-1")
+    }
+
+    func testFavoritesFallBackToTheLegacyRouteOnOldServers() async throws {
+        let transport = ScriptedTransport()
+        transport.on("UserFavoriteItems", status: 404)
+        transport.on("Users/user-1/FavoriteItems", json: "{\"IsFavorite\":true}")
+        try await api(transport).setFavorite(itemID: "track-1", isFavorite: true)
+        XCTAssertEqual(transport.requests.last?.url?.path, "/Users/user-1/FavoriteItems/track-1")
+        XCTAssertEqual(transport.requests.last?.httpMethod, "POST")
+
+        // A missing item is a 404 on both routes.
+        let missing = ScriptedTransport()
+        missing.on("FavoriteItems", status: 404)
+        await assertThrows(.notFound) {
+            try await self.api(missing).setFavorite(itemID: "gone", isFavorite: true)
+        }
+        // Other failures are not retried on the legacy route.
+        let expired = ScriptedTransport()
+        expired.on("FavoriteItems", status: 401)
+        await assertThrows(.unauthorized) {
+            try await self.api(expired).setFavorite(itemID: "track-1", isFavorite: false)
+        }
+        XCTAssertEqual(expired.requests.count, 1)
+    }
 }

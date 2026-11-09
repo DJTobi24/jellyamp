@@ -427,11 +427,19 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
 
     public func setFavorite(itemID: String, isFavorite: Bool) async throws {
         guard let userID = session.userID else { throw JellyfinError.notAuthenticated }
-        let request = client.request(
-            path: "Users/\(userID)/FavoriteItems/\(itemID)",
-            method: isFavorite ? "POST" : "DELETE"
-        )
-        try await sendExpectingSuccess(request)
+        let method = isFavorite ? "POST" : "DELETE"
+        do {
+            // The documented route since 10.9.
+            try await sendExpectingSuccess(client.request(
+                path: "UserFavoriteItems/\(itemID)", query: client.userQuery, method: method))
+        } catch JellyfinError.notFound {
+            // 404 is "no such item" on 10.9+ and "no such route" before; the
+            // legacy route (undocumented but still served by 10.10) tells
+            // them apart: it works on old servers and is a 404 for a missing
+            // item everywhere.
+            try await sendExpectingSuccess(client.request(
+                path: "Users/\(userID)/FavoriteItems/\(itemID)", method: method))
+        }
     }
 
     // MARK: - Plumbing
