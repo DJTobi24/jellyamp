@@ -1,6 +1,6 @@
 [project]
 name = "jellyamp-server"
-version = "0.1.0"
+version = "1.0.0"
 description = "Optional sonic-analysis companion server for Jellyamp: audio embeddings, similarity, Sonic Adventure, auto-mixes."
 requires-python = ">=3.11"
 dependencies = [
@@ -10,20 +10,27 @@ dependencies = [
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
     "numpy>=1.26",
-    "apscheduler>=3.10",
 ]
 
 [project.optional-dependencies]
-# Audio analysis is heavy; the API runs (with capabilities reported per
-# analyzed data) without it, which keeps tests light.
+# The default analysis backend ("dsp") needs only the ffmpeg binary. This
+# extra adds the Essentia/MusiCNN backend: large, x86-64 Linux only, AGPL.
 analysis = [
     "essentia-tensorflow>=2.1b6.dev1110",
+]
+# Sonic Sage (LLM playlists); only used when ANTHROPIC_API_KEY is set.
+sage = [
+    "anthropic>=2.7",
 ]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
+    "anthropic>=2.7",
 ]
+
+[project.scripts]
+jellyamp-server = "jellyamp_server.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -41,4 +48,8 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+    "integration: end-to-end against a real Jellyfin (set JELLYFIN_URL and JELLYFIN_API_KEY)",
+]

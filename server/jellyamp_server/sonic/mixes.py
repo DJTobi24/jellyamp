@@ -106,7 +106,9 @@ def build_mixes(
         return []
     index = LibraryIndex.wrap(library)
     key = week_key(today)
-    k = min(max_mixes, len(recent))
+    # At least ~3 seed tracks per mix: a "cluster" of one track is just that
+    # track's neighbours, and a short history should not be split four ways.
+    k = min(max_mixes, max(1, len(recent) // 3))
     embeddings = np.stack([track.embedding for track in recent])
     # Deterministic per week: same history + library + week → same mixes.
     assignment = _kmeans(embeddings, k, seed=int(key.split("-w")[1]))

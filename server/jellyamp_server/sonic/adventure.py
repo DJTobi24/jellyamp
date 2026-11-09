@@ -12,6 +12,9 @@ from jellyamp_server.sonic.similarity import Library
 from jellyamp_server.store import TrackRecord
 
 ARTIST_DEDUPE_WINDOW = 3
+# How much farther from the waypoint (cosine distance) a track by a fresh
+# artist may be before a repeated artist is preferred after all.
+ARTIST_DEDUPE_SLACK = 0.1
 
 
 def adventure_path(
@@ -38,6 +41,11 @@ def adventure_path(
             if artist:
                 blocked |= artists == artist
         best = index.nearest(waypoint, 1, blocked)
+        closest = index.nearest(waypoint, 1, used)
+        # Variety must not derail the journey: in a library with few artists
+        # the only "fresh" artist may be sonically far off the path.
+        if closest and (not best or best[0][1] > closest[0][1] + ARTIST_DEDUPE_SLACK):
+            best = closest
         if not best:
             continue
         track, distance = best[0]
