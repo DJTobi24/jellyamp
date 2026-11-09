@@ -6,7 +6,7 @@ import FoundationNetworking
 #endif
 
 /// Answers every request through a closure and records what was asked.
-private final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
+private final class BrowseScriptedTransport: HTTPTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [URLRequest] = []
     private let respond: @Sendable (URLRequest) -> (Int, String)
@@ -50,7 +50,7 @@ private let session = JellyfinSession(
 
 final class LibraryBrowseAPITests: XCTestCase {
     func testTracksPageSendsPagingSortAndFilterAndReturnsTotal() async throws {
-        let transport = ScriptedTransport { _ in
+        let transport = BrowseScriptedTransport { _ in
             (200, #"{"Items":[{"Id":"t1","Name":"Adagio","Type":"Audio","RunTimeTicks":3000000000}],"TotalRecordCount":34}"#)
         }
         let api = LibraryBrowseAPI(session: session, transport: transport)
@@ -79,7 +79,7 @@ final class LibraryBrowseAPITests: XCTestCase {
     }
 
     func testAlbumsPageRequestsChildCount() async throws {
-        let transport = ScriptedTransport { _ in
+        let transport = BrowseScriptedTransport { _ in
             (200, #"{"Items":[{"Id":"a1","Name":"Voltage","ChildCount":5,"ProductionYear":2016}],"TotalRecordCount":1}"#)
         }
         let api = LibraryBrowseAPI(session: session, transport: transport)
@@ -92,7 +92,7 @@ final class LibraryBrowseAPITests: XCTestCase {
     }
 
     func testArtistsPageUsesAlbumArtistsEndpoint() async throws {
-        let transport = ScriptedTransport { _ in (200, #"{"Items":[{"Id":"ar1","Name":"Neon Circuit"}],"TotalRecordCount":6}"#) }
+        let transport = BrowseScriptedTransport { _ in (200, #"{"Items":[{"Id":"ar1","Name":"Neon Circuit"}],"TotalRecordCount":6}"#) }
         let api = LibraryBrowseAPI(session: session, transport: transport)
         let page = try await api.artistsPage(sort: ArtistSortOption.name.query(), filter: BrowseFilter(favoritesOnly: true), startIndex: 100, limit: 100)
         XCTAssertEqual(page.totalCount, 6)
@@ -103,7 +103,7 @@ final class LibraryBrowseAPITests: XCTestCase {
     }
 
     func testPlaylistTracksPageKeepsEntryIDs() async throws {
-        let transport = ScriptedTransport { _ in
+        let transport = BrowseScriptedTransport { _ in
             (200, #"{"Items":[{"Id":"t1","Name":"A","PlaylistItemId":"e1"},{"Id":"t1","Name":"A","PlaylistItemId":"e2"}],"TotalRecordCount":2}"#)
         }
         let api = LibraryBrowseAPI(session: session, transport: transport)
@@ -113,7 +113,7 @@ final class LibraryBrowseAPITests: XCTestCase {
     }
 
     func testAlphabetOffsetForAlbumsCountsNamesBelowLetter() async throws {
-        let transport = ScriptedTransport { _ in (200, #"{"Items":[],"TotalRecordCount":4}"#) }
+        let transport = BrowseScriptedTransport { _ in (200, #"{"Items":[],"TotalRecordCount":4}"#) }
         let api = LibraryBrowseAPI(session: session, transport: transport)
         let offset = try await api.alphabetOffset(of: "L", kind: .albums, filter: .none)
         XCTAssertEqual(offset, 4)
@@ -128,7 +128,7 @@ final class LibraryBrowseAPITests: XCTestCase {
 
     func testAlphabetOffsetForTracksBinarySearchesByTitle() async throws {
         let titles = ["Adagio", "Blast Line", "Clock In", "Phosphor", "Polaris", "Sampler Intro", "Set One", "Tidal Sleep"]
-        let transport = ScriptedTransport { request in
+        let transport = BrowseScriptedTransport { request in
             let start = Int(request.queryValue("startIndex") ?? "0") ?? 0
             if request.queryValue("limit") == "0" {
                 return (200, #"{"Items":[],"TotalRecordCount":\#(titles.count)}"#)
@@ -147,7 +147,7 @@ final class LibraryBrowseAPITests: XCTestCase {
     }
 
     func testAppearsOnDoesNotExcludeTheArtist() async throws {
-        let transport = ScriptedTransport { _ in (200, #"{"Items":[{"Id":"a1","Name":"Jellyamp Sampler"}],"TotalRecordCount":1}"#) }
+        let transport = BrowseScriptedTransport { _ in (200, #"{"Items":[{"Id":"a1","Name":"Jellyamp Sampler"}],"TotalRecordCount":1}"#) }
         let api = LibraryBrowseAPI(session: session, transport: transport)
         let albums = try await api.appearsOn(artistID: "ar1")
         XCTAssertEqual(albums.map(\.title), ["Jellyamp Sampler"])
@@ -157,7 +157,7 @@ final class LibraryBrowseAPITests: XCTestCase {
     }
 
     func testErrorsMapToJellyfinError() async {
-        let transport = ScriptedTransport { _ in (401, "") }
+        let transport = BrowseScriptedTransport { _ in (401, "") }
         let api = LibraryBrowseAPI(session: session, transport: transport)
         do {
             _ = try await api.genresPage(startIndex: 0, limit: 10)
@@ -171,8 +171,8 @@ final class LibraryBrowseAPITests: XCTestCase {
 final class LibraryProviderBrowserTests: XCTestCase {
     /// The wrapped provider is the real API over a scripted transport, so the
     /// test does not need its own conformance to the (growing) protocol.
-    private func browser(_ respond: @escaping @Sendable (URLRequest) -> (Int, String)) -> (LibraryProviderBrowser, ScriptedTransport) {
-        let transport = ScriptedTransport(respond: respond)
+    private func browser(_ respond: @escaping @Sendable (URLRequest) -> (Int, String)) -> (LibraryProviderBrowser, BrowseScriptedTransport) {
+        let transport = BrowseScriptedTransport(respond: respond)
         return (LibraryProviderBrowser(library: MusicLibraryAPI(session: session, transport: transport)), transport)
     }
 
