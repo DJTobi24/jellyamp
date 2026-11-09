@@ -6,7 +6,7 @@ import UIKit
 /// The app's Last.fm API account, read from Info.plist.
 ///
 /// `LastFMAPIKey` / `LastFMAPISecret` are filled from the `LASTFM_API_KEY` /
-/// `LASTFM_API_SECRET` build settings (see `ios/Config/Secrets.example.xcconfig`)
+/// `LASTFM_API_SECRET` build settings (see `ios/Config/Signing.xcconfig.example`)
 /// so they are never committed. A build without them simply has no Last.fm
 /// support: the settings screen explains that instead of offering "Connect".
 enum LastFMConfiguration {
