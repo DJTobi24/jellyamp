@@ -24,6 +24,14 @@
 #   JELLYFIN_DEV_MEDIA_PATH  where the server sees the library (default
 #                            /media/music)
 #   JELLYFIN_DEV_LOUDNESS=0  skip the LUFS scan (NormalizationGain stays null)
+#   JELLYFIN_DEV_OFFLINE=0   let the container resolve host names. By default
+#                            it cannot (--dns 127.0.0.1): the artists are made
+#                            up, and a chance MusicBrainz/AudioDB match would
+#                            give them biographies, pictures and genres on a
+#                            machine with internet access but not on one
+#                            without, so tests would see two different
+#                            libraries. (Not applied to a JELLYFIN_DEV_URL
+#                            server, which this script does not start.)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -34,6 +42,7 @@ NAME="${JELLYFIN_DEV_NAME:-jellyamp-dev-jellyfin}"
 EXTERNAL_URL="${JELLYFIN_DEV_URL:-}"
 MEDIA_PATH="${JELLYFIN_DEV_MEDIA_PATH:-/media/music}"
 LOUDNESS="${JELLYFIN_DEV_LOUDNESS:-1}"
+OFFLINE="${JELLYFIN_DEV_OFFLINE:-1}"
 URL="${EXTERNAL_URL:-http://localhost:${PORT}}"
 URL="${URL%/}"
 USER_NAME=demo
@@ -54,7 +63,9 @@ python3 "$HERE/make-library.py" "$STATE/music"
 
 if [[ -z "$EXTERNAL_URL" ]] && ! docker ps --format '{{.Names}}' | grep -qx "$NAME"; then
   docker rm -f "$NAME" >/dev/null 2>&1 || true
-  docker run -d --name "$NAME" -p "${PORT}:8096" \
+  DNS=()
+  [[ "$OFFLINE" == "1" ]] && DNS=(--dns 127.0.0.1)
+  docker run -d --name "$NAME" -p "${PORT}:8096" ${DNS[@]+"${DNS[@]}"} \
     -v "$STATE/config:/config" -v "$STATE/cache:/cache" -v "$STATE/music:${MEDIA_PATH}:ro" \
     "$IMAGE" >/dev/null
 fi
@@ -104,9 +115,8 @@ if [[ "$(api GET /Library/VirtualFolders '' "$TOKEN" | json 'len(d)')" == "0" ]]
   # Default fetchers on purpose. Switching the remote metadata fetchers off
   # (TypeOptions with empty MetadataFetchers) also switches off the artist
   # refresh that aggregates genres from the albums, so artists would come back
-  # with `Genres: []` — unlike any real server. With internet access the scan
-  # therefore asks MusicBrainz about the made-up artists; tests must not rely
-  # on artists having no overview/image.
+  # with `Genres: []` — unlike any real server. Lookups for the made-up
+  # artists are kept from succeeding by JELLYFIN_DEV_OFFLINE instead.
   api POST "/Library/VirtualFolders?name=Music&collectionType=music&refreshLibrary=true" \
     "{\"LibraryOptions\":{\"PathInfos\":[{\"Path\":\"$MEDIA_PATH\"}]}}" "$TOKEN"
 fi
