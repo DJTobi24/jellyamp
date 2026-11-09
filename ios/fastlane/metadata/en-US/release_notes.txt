@@ -1,0 +1,1 @@
+The first release of Jellyamp. Sign in to your Jellyfin server and press play.

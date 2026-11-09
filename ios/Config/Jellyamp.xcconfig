@@ -1,11 +1,15 @@
-// Build settings for the Jellyamp app target (referenced from project.yml).
-//
-// Per-developer secrets live in Secrets.xcconfig next to this file, which is
-// gitignored. The include is optional ("?"), so a checkout without it still
-// builds — features that need a missing key switch themselves off.
-// Copy Secrets.example.xcconfig to Secrets.xcconfig to get started.
+// Build settings shared by every configuration of the app and test targets.
+// Wired up in ios/project.yml (configFiles). Everything that is the same for
+// all contributors lives in project.yml; this file only pulls in the
+// per-developer values that must never be committed.
 
+// Defaults for a checkout without Signing.xcconfig (CI, simulator builds):
+// no team (simulator and CODE_SIGNING_ALLOWED=NO builds do not need one) and
+// no Last.fm application keys (the Last.fm scrobbler stays unavailable).
+DEVELOPMENT_TEAM =
 LASTFM_API_KEY =
 LASTFM_API_SECRET =
 
-#include? "Secrets.xcconfig"
+// Untracked and optional: "#include?" does not fail when the file is missing.
+// Create it with: cp Config/Signing.xcconfig.example Config/Signing.xcconfig
+#include? "Signing.xcconfig"

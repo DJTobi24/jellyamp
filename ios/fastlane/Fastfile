@@ -1,0 +1,345 @@
+# Jellyamp release automation. Step-by-step guide: docs/RELEASE.md.
+#
+#   bundle exec fastlane test          unit tests on a simulator
+#   bundle exec fastlane build         signed App Store .ipa in ios/build/
+#   bundle exec fastlane beta          build + upload to TestFlight
+#   bundle exec fastlane release       upload listing metadata/screenshots
+#   bundle exec fastlane screenshots   capture App Store screenshots
+#
+# Authentication is an App Store Connect API key from the environment
+# (ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_CONTENT) — no Apple ID, no match repo.
+# Signing is Xcode's automatic signing; with the API key xcodebuild creates
+# and downloads whatever certificates and profiles it needs.
+
+require "base64"
+require "fileutils"
+require "json"
+require "open3"
+require "shellwords"
+require "tmpdir"
+require "yaml"
+
+default_platform(:ios)
+
+APP_IDENTIFIER = "dev.djtobi.jellyamp"
+SCHEME = "Jellyamp"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+# Absolute path of ios/. fastlane changes the working directory between
+# parsing, lane code and actions, so nothing below relies on relative paths.
+def ios_dir
+  File.expand_path("..", File.expand_path(FastlaneCore::FastlaneFolder.path))
+end
+
+def ios_path(*parts)
+  File.join(ios_dir, *parts)
+end
+
+def project_path
+  ios_path("Jellyamp.xcodeproj")
+end
+
+# MARKETING_VERSION from project.yml — the single source of truth.
+def marketing_version
+  spec = YAML.safe_load(File.read(ios_path("project.yml")))
+  version = spec.dig("settingGroups", "version", "MARKETING_VERSION").to_s
+  UI.user_error!("settingGroups.version.MARKETING_VERSION is missing in ios/project.yml") if version.empty?
+  version
+end
+
+# Team ID from the environment (CI) or the untracked Signing.xcconfig (Mac).
+def development_team
+  from_env = ENV["DEVELOPMENT_TEAM"].to_s.strip
+  return from_env unless from_env.empty?
+
+  xcconfig = ios_path("Config", "Signing.xcconfig")
+  if File.exist?(xcconfig)
+    match = File.read(xcconfig).match(/^\s*DEVELOPMENT_TEAM\s*=\s*([A-Z0-9]{10})\s*$/)
+    return match[1] if match
+  end
+  UI.user_error!(
+    "No team ID. Set DEVELOPMENT_TEAM in the environment or create " \
+    "ios/Config/Signing.xcconfig from Signing.xcconfig.example (docs/RELEASE.md, step 5)."
+  )
+end
+
+def asc_key_configured?
+  %w[ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT].none? { |name| ENV[name].to_s.strip.empty? }
+end
+
+def require_asc_key!
+  return if asc_key_configured?
+
+  UI.user_error!(
+    "This lane needs an App Store Connect API key: set ASC_KEY_ID, ASC_ISSUER_ID " \
+    "and ASC_KEY_CONTENT (docs/RELEASE.md, step 4)."
+  )
+end
+
+# The .p8 as PEM text. ASC_KEY_CONTENT may hold the file's content as it is,
+# the same with literal "\n" instead of line breaks, or its base64 encoding.
+def asc_key_pem
+  raw = ENV["ASC_KEY_CONTENT"].to_s.strip
+  pem = raw.include?("PRIVATE KEY") ? raw.gsub("\\n", "\n") : Base64.decode64(raw)
+  UI.user_error!("ASC_KEY_CONTENT is neither a .p8 private key nor its base64 encoding") unless pem.include?("PRIVATE KEY")
+  pem.end_with?("\n") ? pem : "#{pem}\n"
+end
+
+# Token for the fastlane actions that talk to App Store Connect.
+def asc_api_key
+  require_asc_key!
+  app_store_connect_api_key(
+    key_id: ENV["ASC_KEY_ID"].strip,
+    issuer_id: ENV["ASC_ISSUER_ID"].strip,
+    key_content: asc_key_pem,
+    duration: 1200,
+    in_house: false
+  )
+end
+
+# xcodebuild cannot take the key from memory; it wants a .p8 file.
+def asc_key_file
+  path = File.join(Dir.tmpdir, "AuthKey_#{ENV['ASC_KEY_ID'].strip}.p8")
+  File.write(path, asc_key_pem, perm: 0o600)
+  path
+end
+
+def remove_asc_key_file
+  key_id = ENV["ASC_KEY_ID"].to_s.strip
+  return if key_id.empty?
+
+  FileUtils.rm_f(File.join(Dir.tmpdir, "AuthKey_#{key_id}.p8"))
+end
+
+# Flags that let xcodebuild manage signing assets. With an API key it signs
+# in as that key; without one it uses the account signed in to Xcode.
+def signing_flags
+  flags = ["-allowProvisioningUpdates"]
+  if asc_key_configured?
+    flags += [
+      "-authenticationKeyPath", asc_key_file,
+      "-authenticationKeyID", ENV["ASC_KEY_ID"].strip,
+      "-authenticationKeyIssuerID", ENV["ASC_ISSUER_ID"].strip
+    ]
+  end
+  flags.shelljoin
+end
+
+def generate_project
+  UI.user_error!("XcodeGen is not installed. Run: brew install xcodegen") unless system("command -v xcodegen > /dev/null 2>&1")
+  Dir.chdir(ios_dir) { sh("xcodegen", "generate") }
+end
+
+# An available iOS simulator whose name matches `pattern`, newest runtime
+# first. Looked up at run time because device names change with every Xcode.
+def simulator(pattern)
+  output, status = Open3.capture2("xcrun", "simctl", "list", "devices", "available", "--json")
+  UI.user_error!("xcrun simctl failed — is Xcode installed and selected?") unless status.success?
+
+  candidates = JSON.parse(output).fetch("devices", {}).flat_map do |runtime, devices|
+    version = runtime[/iOS-([\d-]+)$/, 1]
+    next [] unless version
+
+    devices.select { |device| device["isAvailable"] && device["name"] =~ pattern }
+           .map { |device| device.merge("version" => Gem::Version.new(version.tr("-", "."))) }
+  end
+  UI.user_error!("No available iOS simulator matches #{pattern.inspect}. Add one in Xcode > Settings > Components.") if candidates.empty?
+  candidates.max_by { |device| [device["version"], device["name"]] }
+end
+
+# "What to Test" text: commit subjects since the previous v* tag.
+def testflight_changelog(version, build_number)
+  previous, = Open3.capture2("git", "-C", ios_dir, "describe", "--tags", "--abbrev=0", "--match", "v*", "HEAD^", err: File::NULL)
+  range = previous.strip.empty? ? ["--max-count=20"] : ["#{previous.strip}..HEAD"]
+  log, = Open3.capture2("git", "-C", ios_dir, "log", "--no-merges", "--pretty=format:- %s", *range, err: File::NULL)
+  log = "- Bug fixes and improvements" if log.strip.empty?
+  # TestFlight accepts at most 4000 characters.
+  "Jellyamp #{version} (#{build_number})\n\n#{log.strip}"[0, 3900]
+end
+
+# ---------------------------------------------------------------------------
+# Lanes
+# ---------------------------------------------------------------------------
+
+platform :ios do
+  desc "Run the unit tests on an iPhone simulator"
+  lane :test do
+    generate_project
+    device = simulator(/^iPhone/)
+    UI.message("Testing on #{device['name']} (iOS #{device['version']})")
+    run_tests(
+      project: project_path,
+      scheme: SCHEME,
+      destination: "platform=iOS Simulator,id=#{device['udid']}",
+      result_bundle: true,
+      output_directory: ios_path("fastlane", "test_output"),
+      buildlog_path: ios_path("build", "logs")
+    )
+  end
+
+  desc "Build a signed App Store .ipa into ios/build (options: build_number)"
+  lane :build do |options|
+    generate_project
+    team = development_team
+    build_settings = ["DEVELOPMENT_TEAM=#{team}"]
+    build_number = (options[:build_number] || ENV["BUILD_NUMBER"]).to_s.strip
+    build_settings << "CURRENT_PROJECT_VERSION=#{build_number}" unless build_number.empty?
+    # CI has no Signing.xcconfig; optional Last.fm keys arrive as secrets.
+    %w[LASTFM_API_KEY LASTFM_API_SECRET].each do |name|
+      value = ENV[name].to_s.strip
+      build_settings << "#{name}=#{value}" unless value.empty?
+    end
+
+    build_app(
+      project: project_path,
+      scheme: SCHEME,
+      configuration: "Release",
+      clean: true,
+      destination: "generic/platform=iOS",
+      output_directory: ios_path("build"),
+      output_name: "Jellyamp.ipa",
+      archive_path: ios_path("build", "Jellyamp.xcarchive"),
+      buildlog_path: ios_path("build", "logs"),
+      xcargs: "#{build_settings.shelljoin} #{signing_flags}",
+      export_xcargs: signing_flags,
+      # Xcode 15.3 renamed this to "app-store-connect" but still accepts the old
+      # name; fastlane (checked up to 2.241) only accepts "app-store".
+      export_method: "app-store",
+      export_options: {
+        signingStyle: "automatic",
+        teamID: team,
+        uploadSymbols: true,
+        # The build number is ours (TestFlight + 1); do not let the export
+        # step renumber the build behind our back.
+        manageAppVersionAndBuildNumber: false
+      }
+    )
+  end
+
+  desc "Build and upload to TestFlight (build number = latest on TestFlight + 1)"
+  lane :beta do |options|
+    version = marketing_version
+    # A release tag must agree with project.yml, or the upload lands in the
+    # wrong version train.
+    tag = ENV["GITHUB_REF_TYPE"] == "tag" ? ENV["GITHUB_REF_NAME"].to_s : ""
+    unless tag.empty? || tag == "v#{version}" || tag.start_with?("v#{version}-")
+      UI.user_error!("Tag #{tag} does not match MARKETING_VERSION #{version} in ios/project.yml")
+    end
+
+    api_key = asc_api_key
+    build_number = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: APP_IDENTIFIER,
+      initial_build_number: 0
+    ) + 1
+    UI.important("Building Jellyamp #{version} (#{build_number})")
+
+    build(build_number: build_number)
+
+    # Waiting for processing is what allows the changelog to be attached.
+    # Set TESTFLIGHT_SKIP_WAITING=1 to return right after the upload.
+    skip_waiting = options[:skip_waiting] || ENV["TESTFLIGHT_SKIP_WAITING"] == "1"
+    groups = ENV["TESTFLIGHT_GROUPS"].to_s.split(",").map(&:strip).reject(&:empty?)
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: APP_IDENTIFIER,
+      ipa: lane_context[SharedValues::IPA_OUTPUT_PATH],
+      changelog: testflight_changelog(version, build_number),
+      skip_waiting_for_build_processing: skip_waiting,
+      # External groups need Beta App Review; opt in with TESTFLIGHT_GROUPS.
+      distribute_external: !skip_waiting && !groups.empty?,
+      groups: groups.empty? ? nil : groups,
+      notify_external_testers: !groups.empty?
+    )
+  end
+
+  desc "Upload App Store metadata and screenshots (options: submit, build_number, rating)"
+  lane :release do |options|
+    sh("python3", File.join(ios_dir, "..", "scripts", "check-appstore-metadata.py"))
+
+    screenshots_dir = ios_path("fastlane", "screenshots")
+    has_screenshots = !Dir.glob(File.join(screenshots_dir, "**", "*.png")).empty?
+    UI.important("No screenshots in ios/fastlane/screenshots — uploading metadata only") unless has_screenshots
+
+    # Reviewer contact details are personal data: taken from the environment,
+    # never from the repository. Notes and the demo account come from
+    # metadata/review_information/*.txt.
+    contact = {
+      first_name: ENV["REVIEW_FIRST_NAME"],
+      last_name: ENV["REVIEW_LAST_NAME"],
+      phone_number: ENV["REVIEW_PHONE"],
+      email_address: ENV["REVIEW_EMAIL"]
+    }.reject { |_, value| value.to_s.strip.empty? }
+
+    submit = [true, "true"].include?(options[:submit])
+    deliver_options = {
+      api_key: asc_api_key,
+      app_identifier: APP_IDENTIFIER,
+      app_version: marketing_version,
+      metadata_path: ios_path("fastlane", "metadata"),
+      screenshots_path: screenshots_dir,
+      skip_binary_upload: true,
+      skip_screenshots: !has_screenshots,
+      overwrite_screenshots: has_screenshots,
+      app_review_information: contact,
+      # No interactive HTML preview; the lane also runs unattended.
+      force: true,
+      # precheck cannot inspect in-app purchases with an API key (there are none).
+      precheck_include_in_app_purchases: false,
+      run_precheck_before_submit: true,
+      # Submitting is a deliberate act: fastlane release submit:true
+      submit_for_review: submit,
+      automatic_release: false,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        export_compliance_uses_encryption: false,
+        content_rights_contains_third_party_content: false
+      }
+    }
+    deliver_options[:build_number] = options[:build_number].to_s if options[:build_number]
+    # The age-rating questionnaire changes more often than fastlane does;
+    # upload it only on request (fastlane release rating:true).
+    deliver_options[:app_rating_config_path] = ios_path("fastlane", "metadata", "app_rating.json") if [true, "true"].include?(options[:rating])
+
+    upload_to_app_store(deliver_options)
+  end
+
+  desc "Capture App Store screenshots with the UI-test target (6.9\" iPhone, 13\" iPad)"
+  lane :screenshots do
+    # Hook for the screenshot UI tests: they live in ios/JellyampUITests and
+    # use fastlane's SnapshotHelper (`bundle exec fastlane snapshot init`).
+    unless Dir.exist?(ios_path("JellyampUITests"))
+      UI.user_error!(
+        "ios/JellyampUITests does not exist yet. Until the screenshot UI tests are added, " \
+        "take the screenshots by hand (docs/RELEASE.md, step 10)."
+      )
+    end
+
+    generate_project
+    phone = simulator(/^iPhone .*Pro Max/)
+    tablet = simulator(/^iPad Pro 13-inch/)
+    capture_screenshots(
+      project: project_path,
+      scheme: ENV["SCREENSHOT_SCHEME"] || "JellyampUITests",
+      devices: [phone["name"], tablet["name"]],
+      languages: ["en-US", "de-DE"],
+      output_directory: ios_path("fastlane", "screenshots"),
+      clear_previous_screenshots: true,
+      override_status_bar: true,
+      dark_mode: true,
+      skip_open_summary: true,
+      stop_after_first_error: true
+    )
+  end
+
+  after_all do
+    remove_asc_key_file
+  end
+
+  error do
+    remove_asc_key_file
+  end
+end

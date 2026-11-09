@@ -1,0 +1,99 @@
+name: TestFlight
+
+# Builds a signed App Store build and uploads it to TestFlight.
+#
+#   * manually: Actions -> TestFlight -> Run workflow
+#   * on a version tag: git tag v1.0.0 && git push origin v1.0.0
+#     (the tag must match MARKETING_VERSION in ios/project.yml)
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions),
+# explained step by step in docs/RELEASE.md:
+#
+#   ASC_KEY_ID        App Store Connect API key ID, e.g. 2X9R4HXF34
+#   ASC_ISSUER_ID     issuer ID (a UUID) shown above the key list
+#   ASC_KEY_CONTENT   content of the AuthKey_<id>.p8 file, pasted as it is
+#                     (base64 of the file works too)
+#   DEVELOPMENT_TEAM  10-character Apple Developer Team ID
+#
+# Optional secrets: LASTFM_API_KEY, LASTFM_API_SECRET (Last.fm scrobbling).
+# Optional variable: TESTFLIGHT_GROUPS (comma-separated external tester groups).
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_waiting:
+        description: "Return right after the upload (no changelog is attached)"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+# Two uploads at once would both pick the same "latest build + 1".
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  beta:
+    name: Build and upload
+    # Same image as ios.yml: the iOS 26 SDK is required to build the app.
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+      DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+      LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+      LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
+      TESTFLIGHT_GROUPS: ${{ vars.TESTFLIGHT_GROUPS }}
+      TESTFLIGHT_SKIP_WAITING: ${{ inputs.skip_waiting && '1' || '0' }}
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      FASTLANE_HIDE_CHANGELOG: "1"
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+    steps:
+      - name: Check secrets
+        run: |
+          missing=0
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT DEVELOPMENT_TEAM; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set (see docs/RELEASE.md, step 7)"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - uses: actions/checkout@v4
+        with:
+          # Full history and tags: the TestFlight changelog is the list of
+          # commits since the previous v* tag.
+          fetch-depth: 0
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: ios
+      - name: Build and upload to TestFlight
+        working-directory: ios
+        run: bundle exec fastlane beta
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-build-logs
+          path: ios/build/logs
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload debug symbols
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jellyamp-dSYM
+          path: ios/build/*.dSYM.zip
+          if-no-files-found: ignore
+          retention-days: 90

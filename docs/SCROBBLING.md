@@ -46,7 +46,7 @@ counted attempts; the queue holds at most 2000 entries.
 Last.fm needs a per-app API key and shared secret
 (<https://www.last.fm/api/account/create>). They are **not committed**:
 
-1. `cp ios/Config/Secrets.example.xcconfig ios/Config/Secrets.xcconfig`
+1. `cp ios/Config/Signing.xcconfig.example ios/Config/Signing.xcconfig`
    (gitignored) and fill in `LASTFM_API_KEY` / `LASTFM_API_SECRET`; on CI pass
    them as `xcodebuild … LASTFM_API_KEY=… LASTFM_API_SECRET=…`.
 2. `project.yml` maps the build settings to the Info.plist keys

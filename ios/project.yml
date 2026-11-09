@@ -4,6 +4,27 @@ options:
   deploymentTarget:
     iOS: "16.0"
   createIntermediateGroups: true
+  developmentLanguage: en
+
+configs:
+  Debug: debug
+  Release: release
+
+# Per-developer values (team ID, optional Last.fm keys) come from the
+# untracked Config/Signing.xcconfig, which Jellyamp.xcconfig includes when it
+# exists. Nothing account-specific is committed. See docs/RELEASE.md.
+configFiles:
+  Debug: Config/Jellyamp.xcconfig
+  Release: Config/Jellyamp.xcconfig
+
+settingGroups:
+  # Single source of truth for the app version. Info.plist reads these via
+  # $(MARKETING_VERSION) / $(CURRENT_PROJECT_VERSION); fastlane reads
+  # MARKETING_VERSION from here and overrides CURRENT_PROJECT_VERSION on the
+  # xcodebuild command line with "latest TestFlight build + 1".
+  version:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
 
 packages:
   JellyampCore:
@@ -12,9 +33,6 @@ packages:
     path: Packages/JellyfinBackend
   SonicClient:
     path: Packages/SonicClient
-  GRDB:
-    url: https://github.com/groue/GRDB.swift
-    from: 6.29.0
 
 targets:
   Jellyamp:
@@ -26,41 +44,87 @@ targets:
       - package: JellyampCore
       - package: JellyfinBackend
       - package: SonicClient
-      - package: GRDB
     info:
       path: Jellyamp/Info.plist
       properties:
         CFBundleDisplayName: Jellyamp
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
-        UILaunchScreen: {}
-        # Portrait-only music player; declaring full-screen satisfies the iPad
-        # "all orientations" requirement without supporting landscape.
-        UIRequiresFullScreen: true
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.music
+        # Export compliance: the app only uses encryption that is part of the
+        # OS (HTTPS via URLSession, Keychain). Declaring it here skips the
+        # per-build question in App Store Connect. See docs/RELEASE.md.
+        ITSAppUsesNonExemptEncryption: false
+        # Solid near-black launch screen (matches the dark UI, no white flash).
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSupportsIndirectInputEvents: true
+        # No UIRequiresFullScreen: the app takes part in iPad multitasking
+        # (Split View / Slide Over / windowed mode), which requires all four
+        # orientations on iPad.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Music keeps playing with the screen locked / app in the background.
         UIBackgroundModes:
           - audio
         NSAppTransportSecurity:
-          # Many self-hosted Jellyfin servers run plain HTTP on the LAN.
-          NSAllowsLocalNetworking: true
+          # The server address is typed in by the user and self-hosted
+          # Jellyfin servers very often speak plain HTTP on a LAN/VPN under
+          # names such as jellyfin.fritz.box, nas.lan or host.tailnet.ts.net.
+          # Those are fully qualified, so NSAllowsLocalNetworking (IP
+          # literals, .local and unqualified names only) does not cover them,
+          # and exception domains cannot be known at build time.
+          # Do NOT add NSAllowsLocalNetworking / NSAllowsArbitraryLoadsForMedia
+          # / NSAllowsArbitraryLoadsInWebContent next to this key: on iOS 10+
+          # their mere presence makes the system ignore NSAllowsArbitraryLoads.
+          # App Review justification: docs/RELEASE.md, "App Transport Security".
           NSAllowsArbitraryLoads: true
+        # Shown by iOS the first time the app reaches a LAN address. No
+        # NSBonjourServices: the app does not browse or advertise Bonjour
+        # services; servers are entered by URL.
         NSLocalNetworkUsageDescription: >-
           Jellyamp connects to your Jellyfin server on the local network to
           stream your music.
+        # Optional Last.fm application credentials, empty unless set in
+        # Config/Signing.xcconfig. Read by the scrobbling settings.
+        LastFMAPIKey: $(LASTFM_API_KEY)
+        LastFMAPISecret: $(LASTFM_API_SECRET)
     entitlements:
       path: Jellyamp/Jellyamp.entitlements
-      properties:
-        # NOTE: CarPlay (com.apple.developer.playable-content) needs Apple to
-        # approve the "CarPlay Audio App" capability for the team + bundle ID
-        # before it can go into a provisioning profile. Re-add it once granted.
-        com.apple.developer.siri: true
+      properties: {}
+        # ---- Opt-in entitlements: add below, replacing the "{}" above ----
+        #
+        # Siri: NOT needed for App Intents / Shortcuts. Only add it if the app
+        # ships a SiriKit Intents extension (INPlayMediaIntent); the App ID
+        # then needs the "SiriKit" capability.
+        #   com.apple.developer.siri: true
+        #
+        # CarPlay audio: only after Apple granted the CarPlay Audio App
+        # entitlement to the team (docs/CARPLAY.md, docs/RELEASE.md appendix).
+        # Adding it earlier makes automatic signing fail.
+        #   com.apple.developer.carplay-audio: true
     settings:
+      groups:
+        - version
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.djtobi.jellyamp
         SWIFT_VERSION: "5.9"
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         ENABLE_USER_SCRIPT_SANDBOXING: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # Lets Xcode extract Text("…") / String(localized:) into
+        # Resources/Localizable.xcstrings on every build.
+        SWIFT_EMIT_LOC_STRINGS: "YES"
+        LOCALIZATION_PREFERS_STRING_CATALOGS: "YES"
 
   JellyampTests:
     type: bundle.unit-test
@@ -69,12 +133,30 @@ targets:
       - JellyampTests
     dependencies:
       - target: Jellyamp
+    settings:
+      groups:
+        - version
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.djtobi.jellyamp.tests
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: "YES"
+        ENABLE_USER_SCRIPT_SANDBOXING: true
 
 schemes:
   Jellyamp:
     build:
       targets:
         Jellyamp: all
+        JellyampTests: [test]
+    run:
+      config: Debug
     test:
+      config: Debug
       targets:
         - JellyampTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
