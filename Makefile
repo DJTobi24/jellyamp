@@ -1,3 +1,4 @@
+# Docker Hub blocked? Use: make test-core SWIFT_IMAGE=mirror.gcr.io/library/swift:6.0
 SWIFT_IMAGE ?= swift:6.0
 SWIFT_DOCKER = docker run --rm -v $(CURDIR):/work -w /work $(SWIFT_IMAGE)
 
