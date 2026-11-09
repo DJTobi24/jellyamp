@@ -55,4 +55,53 @@ final class ServerBehaviourTests: XCTestCase {
         XCTAssertEqual(query["includeItemTypes"], "MusicAlbum")
         XCTAssertEqual(query["recursive"], "true")
     }
+
+    // MARK: Lookups by ID
+
+    func testItemLookupsIgnoreAnswersThatAreNotTheRequestedItem() async throws {
+        // What 10.10 answers for `ids=not-a-guid`: the user's root folders.
+        let transport = ScriptedTransport()
+        transport.on("Items", json: itemsJSON([
+            item("7e64e319657a9516ec78490da03edccb", "\"Name\":\"Music\",\"Type\":\"CollectionFolder\""),
+            item("1071671e7bffa0532e930debee501d2e", "\"Name\":\"Playlists\",\"Type\":\"ManualPlaylistsFolder\""),
+        ]))
+        let library = api(transport)
+        let album = try await library.album(id: "not-a-guid")
+        XCTAssertNil(album)
+        let artist = try await library.artist(id: "not-a-guid")
+        XCTAssertNil(artist)
+        let empty = try await library.artist(id: "")
+        XCTAssertNil(empty)
+        XCTAssertEqual(transport.requests.count, 2, "an empty ID is not worth a request")
+    }
+
+    func testItemLookupsMatchIDAndType() async throws {
+        let transport = ScriptedTransport()
+        transport.on("Items", json: itemsJSON([
+            item("d74e5264cf6a3ab522a0ffea1c91fdc3", "\"Name\":\"Voltage\",\"Type\":\"MusicAlbum\",\"ChildCount\":5"),
+        ]))
+        let library = api(transport)
+        // Dashed/uppercase GUIDs are the same item.
+        let album = try await library.album(id: "D74E5264-CF6A-3AB5-22A0-FFEA1C91FDC3")
+        XCTAssertEqual(album?.title, "Voltage")
+        XCTAssertEqual(album?.trackCount, 5)
+        // An album is not an artist.
+        let artist = try await library.artist(id: "d74e5264cf6a3ab522a0ffea1c91fdc3")
+        XCTAssertNil(artist)
+    }
+
+    func testAlbumTracksAreQueriedByAlbumNotByFolderInDiscOrder() async throws {
+        let transport = ScriptedTransport()
+        transport.on("Items", json: itemsJSON([
+            item("t1", "\"ParentIndexNumber\":1,\"IndexNumber\":1"),
+            item("t2", "\"ParentIndexNumber\":2,\"IndexNumber\":1"),
+        ]))
+        let tracks = try await api(transport).tracks(inAlbum: "album-1")
+        XCTAssertEqual(tracks.map(\.discNumber), [1, 2])
+        let query = transport.query()
+        XCTAssertEqual(query["albumIds"], "album-1")
+        XCTAssertNil(query["parentId"], "an unknown parentId is a 400, and disc folders are not children of the album")
+        XCTAssertEqual(query["recursive"], "true")
+        XCTAssertEqual(query["sortBy"], "ParentIndexNumber,IndexNumber,SortName")
+    }
 }

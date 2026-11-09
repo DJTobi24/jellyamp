@@ -69,18 +69,29 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     public func album(id: String) async throws -> Album? {
-        let response = try await items(query: [
-            URLQueryItem(name: "ids", value: id),
-            URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
-        ])
-        return response.first.map(DTOMapper.album(from:))
+        try await item(id: id, type: "MusicAlbum").map(DTOMapper.album(from:))
+    }
+
+    /// One item by ID, or nil if the server has no such item of that type.
+    /// The answer is checked against the request: Jellyfin silently drops an
+    /// `ids` value it cannot parse and then answers the *unfiltered* query —
+    /// the user's root folders ("Music", "Playlists").
+    private func item(id: String, type: String) async throws -> BaseItemDto? {
+        guard !id.isEmpty else { return nil }
+        let response = try await items(query: [URLQueryItem(name: "ids", value: id)])
+        return response.first { JellyfinClient.sameID($0.Id, id) && $0.Type == type }
     }
 
     public func tracks(inAlbum albumID: String) async throws -> [Track] {
+        // `albumIds`, not `parentId`: the parent of a track is its *folder*,
+        // which is the album only as long as the album is one flat folder
+        // (multi-disc rips keep "CD 1/", "CD 2/" below it), and an unknown
+        // `parentId` is answered with 400 where this is an empty list.
         let response = try await items(query: [
-            URLQueryItem(name: "parentId", value: albumID),
+            URLQueryItem(name: "albumIds", value: albumID),
             URLQueryItem(name: "includeItemTypes", value: "Audio"),
-            URLQueryItem(name: "sortBy", value: "ParentIndexNumber,IndexNumber"),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "ParentIndexNumber,IndexNumber,SortName"),
         ])
         return response.map(DTOMapper.track(from:))
     }
@@ -98,8 +109,7 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     /// Full artist item including the biography (`Overview`), which the list
     /// endpoints don't return.
     public func artist(id: String) async throws -> Artist? {
-        let response = try await items(query: [URLQueryItem(name: "ids", value: id)])
-        return response.first.map(DTOMapper.artist(from:))
+        try await item(id: id, type: "MusicArtist").map(DTOMapper.artist(from:))
     }
 
     public func albums(byArtist artistID: String) async throws -> [Album] {
