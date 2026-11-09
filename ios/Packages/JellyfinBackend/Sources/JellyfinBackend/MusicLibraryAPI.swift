@@ -431,24 +431,37 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty else { return ([], [], [], []) }
         // One request per kind so each kind gets its own `limit`; they are
-        // independent, so they run side by side.
-        @Sendable func found(_ type: String) async throws -> [BaseItemDto] {
-            try await self.items(query: [
-                URLQueryItem(name: "searchTerm", value: term),
-                URLQueryItem(name: "includeItemTypes", value: type),
-                URLQueryItem(name: "recursive", value: "true"),
-                URLQueryItem(name: "limit", value: String(limit)),
-            ])
+        // independent, so they run side by side. Every request runs to its
+        // end and hands back a `Result`: with `async let`, the first failure
+        // (say, a 401 on all four) cancels its siblings mid-flight, and
+        // cancelling an in-flight request can hang URLSession on Linux.
+        let kinds = ["Audio", "MusicAlbum", "MusicArtist", "Playlist"]
+        let results = await withTaskGroup(of: (Int, Result<[BaseItemDto], Error>).self) { group in
+            for (index, kind) in kinds.enumerated() {
+                group.addTask {
+                    do {
+                        return (index, .success(try await self.items(query: [
+                            URLQueryItem(name: "searchTerm", value: term),
+                            URLQueryItem(name: "includeItemTypes", value: kind),
+                            URLQueryItem(name: "recursive", value: "true"),
+                            URLQueryItem(name: "limit", value: String(limit)),
+                        ])))
+                    } catch {
+                        return (index, .failure(error))
+                    }
+                }
+            }
+            var collected = [Result<[BaseItemDto], Error>](repeating: .success([]), count: kinds.count)
+            for await (index, result) in group {
+                collected[index] = result
+            }
+            return collected
         }
-        async let trackItems = found("Audio")
-        async let albumItems = found("MusicAlbum")
-        async let artistItems = found("MusicArtist")
-        async let playlistItems = found("Playlist")
-        return try await (
-            tracks: trackItems.map(DTOMapper.track(from:)),
-            albums: albumItems.map(DTOMapper.album(from:)),
-            artists: artistItems.map(DTOMapper.artist(from:)),
-            playlists: playlistItems.map(DTOMapper.playlist(from:))
+        return (
+            tracks: try results[0].get().map(DTOMapper.track(from:)),
+            albums: try results[1].get().map(DTOMapper.album(from:)),
+            artists: try results[2].get().map(DTOMapper.artist(from:)),
+            playlists: try results[3].get().map(DTOMapper.playlist(from:))
         )
     }
 
