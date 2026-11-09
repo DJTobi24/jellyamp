@@ -1,17 +1,33 @@
+# jellyamp-server next to an existing Jellyfin. Setup: see README.md.
+#
+#   cp .env.example .env   # fill in the three required values
+#   docker compose up -d
 services:
   jellyamp-server:
+    # Uses the published image when it can be pulled, otherwise builds from
+    # this directory (`docker compose build` forces a local build).
+    image: ghcr.io/djtobi24/jellyamp-server:latest
     build:
       context: .
-      args:
-        WITH_ANALYSIS: "1"
+      # args:
+      #   WITH_ANALYSIS: "1"   # Essentia/MusiCNN backend (amd64 only, large)
     ports:
       - "8095:8095"
     env_file: .env
     volumes:
-      - ./data:/app/data
+      # Embeddings database. Everything in it can be rebuilt by a scan.
+      - jellyamp-data:/data
+      # Only for ANALYSIS_BACKEND=essentia with your own model file:
+      # - ./models:/models:ro
     restart: unless-stopped
+    # If Jellyfin runs in another compose project, either put both on one
+    # external network, or reach it via the Docker host:
+    #   JELLYFIN_URL=http://host.docker.internal:8096
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  # Uncomment to run Jellyfin alongside for a self-contained stack:
+  # Uncomment to run Jellyfin alongside for a self-contained stack
+  # (then JELLYFIN_URL=http://jellyfin:8096):
   # jellyfin:
   #   image: jellyfin/jellyfin
   #   ports:
@@ -20,3 +36,6 @@ services:
   #     - ./jellyfin-config:/config
   #     - /path/to/music:/media/music:ro
   #   restart: unless-stopped
+
+volumes:
+  jellyamp-data:

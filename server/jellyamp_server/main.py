@@ -7,6 +7,7 @@ item IDs; the iOS app resolves them to metadata through Jellyfin.
 import asyncio
 import hmac
 import logging
+import random
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
@@ -412,12 +413,17 @@ def create_app(
                     status_code=404,
                     detail=f"no analyzed tracks match {request.type} {request.seed!r}",
                 )
-            # Sonic ranking within the subset keeps the station coherent
-            # instead of a flat random shuffle of the whole genre.
-            seeds = subset[:: max(len(subset) // 5, 1)][:5]
-            item_ids = mixes.build_station(seeds, index.subset(subset), count=request.count)
-            if not item_ids:
-                item_ids = [t.item_id for t in subset[: request.count]]
+            if len(subset) <= request.count:
+                # Everything that matches fits: play all of it, shuffled.
+                item_ids = [t.item_id for t in subset]
+                random.shuffle(item_ids)
+            else:
+                # Sonic ranking within the subset keeps the station coherent
+                # instead of a flat random shuffle of the whole genre.
+                seeds = subset[:: max(len(subset) // 5, 1)][:5]
+                item_ids = mixes.build_station(seeds, index.subset(subset), count=request.count)
+                if not item_ids:
+                    item_ids = [t.item_id for t in subset[: request.count]]
         return StationResponse(itemIds=item_ids)
 
     @app.get("/api/v1/loudness/{item_id}", response_model=LoudnessResponse, dependencies=protected)

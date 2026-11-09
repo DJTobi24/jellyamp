@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from typing import Literal, Protocol
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from jellyamp_server.sonic.index import LibraryIndex
 from jellyamp_server.store import TrackRecord
@@ -283,6 +283,11 @@ class AnthropicSageLLM:
             raise SageError(f"language model request failed (HTTP {error.status_code})") from error
         except anthropic.APIConnectionError as error:
             raise SageError("could not reach the language model") from error
+        except ValidationError:
+            # The SDK validates the text against SageCriteria while parsing;
+            # a declined or truncated answer is not valid JSON for it. (Not
+            # chained: pydantic's message would quote the model's output.)
+            raise SageError("the language model declined or gave an incomplete answer") from None
 
         if response.stop_reason == "refusal":
             raise SageError("the language model declined this request")

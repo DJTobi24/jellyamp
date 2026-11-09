@@ -1,0 +1,73 @@
+name: jellyamp-server image
+
+# Publishes the companion server to GitHub Container Registry:
+#   ghcr.io/<owner>/jellyamp-server:<version>, :<major>.<minor>, :latest
+# on tags like `server-v1.0.0`, or manually (workflow_dispatch) as :edge.
+
+on:
+  push:
+    tags: ["server-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag for a manual build"
+        required: true
+        default: edge
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name and version
+        id: meta
+        env:
+          MANUAL_TAG: ${{ inputs.tag }}
+        run: |
+          # GHCR requires a lowercase repository path.
+          owner=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/${owner}/jellyamp-server"
+          if [[ "${GITHUB_REF}" == refs/tags/server-v* ]]; then
+            version="${GITHUB_REF#refs/tags/server-v}"
+            tags="${image}:${version}"
+            # Stable releases (x.y.z) also move :x.y and :latest.
+            if [[ "${version}" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+$ ]]; then
+              tags="${tags},${image}:${BASH_REMATCH[1]}.${BASH_REMATCH[2]},${image}:latest"
+            fi
+          else
+            version="${MANUAL_TAG:-edge}"
+            tags="${image}:${version}"
+          fi
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=jellyamp-server
+            org.opencontainers.image.description=Sonic analysis companion server for the Jellyamp iOS app
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -213,7 +213,7 @@ def test_genre_station(client, library):
     print(f"\n[station genre=jazz] {len(ids)} tracks")
     assert ids and len(ids) == len(set(ids))
     assert set(ids) <= set(library.by_genre["Jazz"])
-    assert len(ids) >= len(library.by_genre["Jazz"]) - 1
+    assert set(ids) == set(library.by_genre["Jazz"])  # all of them fit into count
 
 
 def test_decade_station(client, library):
@@ -250,9 +250,8 @@ def test_mixes_for_the_user(client, library):
     built = response.json()["mixes"]
     week = mixes_module.week_key()
     for mix in built:
-        print(
-            f"\n[mix] {mix['id']} {mix['title']!r} — {mix['description']} ({len(mix['itemIds'])} tracks)"
-        )
+        size = len(mix["itemIds"])
+        print(f"\n[mix] {mix['id']} {mix['title']!r}: {mix['description']} ({size} tracks)")
     assert built
     assert [m["id"] for m in built] == [f"mix-{week}-{n + 1}" for n in range(len(built))]
     for mix in built:
