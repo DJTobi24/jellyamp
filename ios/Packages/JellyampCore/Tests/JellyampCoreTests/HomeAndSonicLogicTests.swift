@@ -50,6 +50,15 @@ final class HomeShelvesTests: XCTestCase {
         XCTAssertTrue(HomeShelves.jumpBackInAlbums(fromRecentTracks: recent, limit: 0).isEmpty)
     }
 
+    func testResolvedAlbumsReplaceDerivedOnesInPlace() {
+        let derived = HomeShelves.jumpBackInAlbums(fromRecentTracks: [track("1", album: "b"), track("2", album: "a")])
+        let full = Album(id: "a", title: "Full A", artistName: "Band", trackCount: 9, isFavorite: true)
+        let merged = HomeShelves.preferring(resolved: [full, Album(id: "zzz", title: "Unrelated", artistName: "")], over: derived)
+        XCTAssertEqual(merged.map(\.id), ["b", "a"])
+        XCTAssertEqual(merged[0].title, "Album b")
+        XCTAssertEqual(merged[1], full)
+    }
+
     func testUniquedKeepsFirstOccurrence() {
         let tracks = [track("1"), track("2"), track("1")]
         XCTAssertEqual(HomeShelves.uniqued(tracks).map(\.id), ["1", "2"])

@@ -84,6 +84,13 @@ public struct StationSession: Sendable {
         if history.count > cap { history.removeFirst(history.count - cap) }
     }
 
+    /// Records tracks as issued by this station. `nextBatch` does this
+    /// itself; this is for merging a selection that was computed on a copy
+    /// (while a fetch was in flight) back into the live session.
+    public mutating func markIssued(_ trackIDs: [String]) {
+        issuedIDs.formUnion(trackIDs)
+    }
+
     /// First batch when the station starts: nothing queued, nothing played.
     public mutating func initialBatch(from candidates: [Track]) -> [Track] {
         nextBatch(from: candidates, queued: [])

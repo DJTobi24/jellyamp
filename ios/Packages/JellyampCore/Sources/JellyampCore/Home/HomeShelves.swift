@@ -26,6 +26,17 @@ public enum HomeShelves {
         return albums
     }
 
+    /// Swaps the track-derived stand-ins for the full album items once the
+    /// library resolved them (favorite state, track count, own artwork),
+    /// keeping the recency order. Albums that did not resolve stay as derived.
+    public static func preferring(resolved: [Album], over derived: [Album]) -> [Album] {
+        var byID: [String: Album] = [:]
+        for album in resolved where byID[album.id] == nil {
+            byID[album.id] = album
+        }
+        return derived.map { byID[$0.id] ?? $0 }
+    }
+
     /// Removes duplicate IDs while keeping the first occurrence — server
     /// responses (mixes, adventures, similar lists) may repeat items.
     public static func uniqued<Item: Identifiable>(_ items: [Item]) -> [Item] where Item.ID: Hashable {
