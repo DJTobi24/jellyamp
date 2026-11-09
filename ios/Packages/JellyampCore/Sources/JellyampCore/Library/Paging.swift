@@ -205,12 +205,6 @@ public struct PagedListState<Item: Identifiable & Sendable>: Sendable where Item
         nextServerIndex = max(baseOffset, nextServerIndex - 1)
     }
 
-    /// Replaces a row in place (renamed playlist, changed favorite flag).
-    public mutating func update(_ item: Item) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[index] = item
-    }
-
     private mutating func setItems(_ newItems: [Item]) {
         items = []
         seen = []

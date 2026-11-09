@@ -13,16 +13,6 @@ public enum AlphabetIndex {
     public static let letters: [String] = [symbols] + (UnicodeScalar("A").value...UnicodeScalar("Z").value)
         .compactMap { UnicodeScalar($0).map { String(Character($0)) } }
 
-    /// The bucket a name falls into: its first character without diacritics,
-    /// upper-cased; `#` for digits, punctuation and non-Latin scripts.
-    public static func bucket(for name: String) -> String {
-        let folded = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
-            .uppercased()
-        guard let first = folded.unicodeScalars.first, first.value >= 65, first.value <= 90 else { return symbols }
-        return String(Character(first))
-    }
-
     /// Mirrors how Jellyfin builds sort names (lower-cased, leading article
     /// dropped), for sorting short lists on the client the same way.
     public static func sortKey(for name: String) -> String {
@@ -34,20 +24,6 @@ public enum AlphabetIndex {
             break
         }
         return key
-    }
-
-    /// Splits an already sorted, fully loaded list into letter sections.
-    public static func sections<Item>(_ items: [Item], name: (Item) -> String) -> [(letter: String, items: [Item])] {
-        var result: [(letter: String, items: [Item])] = []
-        for item in items {
-            let letter = bucket(for: sortKey(for: name(item)))
-            if let last = result.indices.last, result[last].letter == letter {
-                result[last].items.append(item)
-            } else {
-                result.append((letter, [item]))
-            }
-        }
-        return result
     }
 
     // MARK: - Server offsets

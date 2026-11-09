@@ -359,28 +359,11 @@ final class AlphabetIndexTests: XCTestCase {
         XCTAssertEqual(AlphabetIndex.letters.last, "Z")
     }
 
-    func testBuckets() {
-        XCTAssertEqual(AlphabetIndex.bucket(for: "aurora drift"), "A")
-        XCTAssertEqual(AlphabetIndex.bucket(for: "Édith Piaf"), "E")
-        XCTAssertEqual(AlphabetIndex.bucket(for: " zz top"), "Z")
-        XCTAssertEqual(AlphabetIndex.bucket(for: "2Pac"), "#")
-        XCTAssertEqual(AlphabetIndex.bucket(for: "(What's the Story)"), "#")
-        XCTAssertEqual(AlphabetIndex.bucket(for: "坂本龍一"), "#")
-        XCTAssertEqual(AlphabetIndex.bucket(for: ""), "#")
-    }
-
     func testSortKeyDropsLeadingArticleLikeJellyfin() {
         XCTAssertEqual(AlphabetIndex.sortKey(for: "The Granite Saints"), "granite saints")
         XCTAssertEqual(AlphabetIndex.sortKey(for: "A Perfect Circle"), "perfect circle")
         XCTAssertEqual(AlphabetIndex.sortKey(for: "The "), "the")
         XCTAssertEqual(AlphabetIndex.sortKey(for: "Theory"), "theory")
-    }
-
-    func testSectionsForLoadedLists() {
-        let names = ["Aurora Drift", "Blue Hour Trio", "The Granite Saints", "Halden Quartet"]
-        let sections = AlphabetIndex.sections(names) { $0 }
-        XCTAssertEqual(sections.map(\.letter), ["A", "B", "G", "H"])
-        XCTAssertEqual(sections[2].items, ["The Granite Saints"])
     }
 
     func testOffsetLookup() {
@@ -604,17 +587,11 @@ final class BrowseSupportTests: XCTestCase {
         XCTAssertTrue(overrides.values.isEmpty)
     }
 
-    func testGridColumns() {
-        XCTAssertEqual(AdaptiveGrid.columnCount(availableWidth: 361), 2) // iPhone 15 minus padding
-        XCTAssertEqual(AdaptiveGrid.columnCount(availableWidth: 320), 2)
-        XCTAssertEqual(AdaptiveGrid.columnCount(availableWidth: 700), 4)
-        XCTAssertEqual(AdaptiveGrid.columnCount(availableWidth: 1100), 6)
-        XCTAssertEqual(AdaptiveGrid.columnCount(availableWidth: 5000), 8)
-        XCTAssertEqual(AdaptiveGrid.columnCount(availableWidth: 0), 1)
-        XCTAssertEqual(AdaptiveGrid.columnCount(availableWidth: .nan), 1)
-        XCTAssertEqual(AdaptiveGrid.columnCount(availableWidth: 361, isAccessibilitySize: true), 1)
-        XCTAssertEqual(AdaptiveGrid.columnCount(availableWidth: 700, isAccessibilitySize: true), 2)
-        XCTAssertEqual(AdaptiveGrid.itemWidth(availableWidth: 361, columns: 2), 174.5)
+    func testGridMinimumItemWidthGrowsAtAccessibilitySizes() {
+        XCTAssertEqual(AdaptiveGrid.minimumItemWidth(isAccessibilitySize: false), 150)
+        XCTAssertEqual(AdaptiveGrid.minimumItemWidth(isAccessibilitySize: true), 270)
+        XCTAssertEqual(AdaptiveGrid.minimumItemWidth(base: 100, isAccessibilitySize: true), 180)
+        XCTAssertEqual(AdaptiveGrid.readableContentWidth, 720)
     }
 
     func testAccessibilitySummaries() {
@@ -624,8 +601,44 @@ final class BrowseSupportTests: XCTestCase {
             AccessibilityText.trackRow(song, showsArtist: false, showsAlbum: true, trackNumber: 1),
             "Track 1, Phosphor, Afterimage, 5 minutes"
         )
+        XCTAssertEqual(AccessibilityText.trackRow(song, detail: "Neon Circuit · Afterimage"), "Phosphor, Neon Circuit · Afterimage, 5 minutes")
+        XCTAssertEqual(AccessibilityText.trackRow(song, detail: ""), "Phosphor, 5 minutes")
         let album = Album(id: "a", title: "Afterimage", artistName: "Neon Circuit", productionYear: 2021)
         XCTAssertEqual(AccessibilityText.album(album), "Afterimage, Neon Circuit, 2021")
         XCTAssertEqual(AccessibilityText.playlist(Playlist(id: "p", name: "Mix", trackCount: 1)), "Mix, 1 song")
+    }
+
+    func testPlayQueueWindow() {
+        let small = PlayQueueWindow.around(index: 3, count: 10)
+        XCTAssertEqual(small.range, 0..<10)
+        XCTAssertEqual(small.startAt, 3)
+        let middle = PlayQueueWindow.around(index: 5_000, count: 50_000)
+        XCTAssertEqual(middle.range, 4_900..<5_401)
+        XCTAssertEqual(middle.startAt, 100)
+        let end = PlayQueueWindow.around(index: 49_999, count: 50_000)
+        XCTAssertEqual(end.range, 49_899..<50_000)
+        XCTAssertEqual(end.startAt, 100)
+        XCTAssertEqual(PlayQueueWindow.around(index: 99, count: 0).range, 0..<0)
+        XCTAssertEqual(PlayQueueWindow.around(index: 99, count: 5).startAt, 4, "out-of-range index is clamped")
+
+        let tracks = (0..<1_000).map { track("t\($0)") }
+        let queue = PlayQueueWindow.queue(from: tracks, tappedIndex: 700)
+        XCTAssertEqual(queue?.currentTrack?.id, "t700")
+        XCTAssertNil(PlayQueueWindow.queue(from: [], tappedIndex: 0))
+    }
+
+    func testStableHueIsDeterministicAndInRange() {
+        XCTAssertEqual(StableColor.hue(for: "Ambient"), StableColor.hue(for: "ambient"))
+        XCTAssertNotEqual(StableColor.hue(for: "Ambient"), StableColor.hue(for: "Rock"))
+        for name in ["", "Jazz", "Électronique", "ロック"] {
+            let hue = StableColor.hue(for: name)
+            XCTAssertTrue(hue >= 0 && hue < 1)
+        }
+        // Pinned so a refactor cannot silently recolor every genre tile.
+        XCTAssertEqual(StableColor.hue(for: "Jazz"), Double(fnv("jazz") % 360) / 360)
+    }
+
+    private func fnv(_ text: String) -> UInt32 {
+        text.utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 }
     }
 }
