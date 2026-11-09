@@ -49,6 +49,28 @@ public enum StreamURLBuilder {
         return components.url!
     }
 
+    /// Original file for an offline download (`/Items/{id}/Download`).
+    ///
+    /// Checked against Jellyfin 10.10.7: `/Items/{id}/Download`,
+    /// `/Items/{id}/File` and `/Audio/{id}/stream?static=true` all return the
+    /// byte-identical original with `Content-Length`, `Accept-Ranges: bytes`
+    /// and `Last-Modified` (no `ETag`); `Range` gives 206 and a stale
+    /// `If-Range` date gives a full 200, so URLSession resume data is safe.
+    /// `/Download` is the one meant for this: it honours the per-user "allow
+    /// media downloads" policy (403 when disabled) and names the file in
+    /// `Content-Disposition`. It needs auth (401 without); the token goes in
+    /// `api_key` like the stream URLs, because a background transfer is
+    /// re-issued by the system and must not depend on request headers
+    /// surviving redirects or reverse proxies. `HEAD` is not supported (405).
+    public static func downloadURL(for trackID: String, session: JellyfinSession) -> URL {
+        var components = URLComponents(
+            url: session.serverURL.appendingPathComponent("Items/\(trackID)/Download"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [URLQueryItem(name: "api_key", value: session.accessToken ?? "")]
+        return components.url!
+    }
+
     /// Seek into a transcoded stream: same URL with `startTimeTicks`.
     public static func url(_ base: URL, seekingTo seconds: TimeInterval) -> URL {
         var components = URLComponents(url: base, resolvingAgainstBaseURL: false)!
@@ -80,6 +102,13 @@ public enum ImageURLBuilder {
         )!
         components.queryItems = query
         return components.url!
+    }
+
+    /// Cover to store next to downloads. Fixed width (enough for the full-screen
+    /// player at 3x) and no `tag`, so one file
+    /// per item serves every size the UI asks for; images need no auth.
+    public static func offlineArtworkURL(itemID: String, session: JellyfinSession) -> URL {
+        url(itemID: itemID, tag: nil, maxWidth: 1000, session: session)
     }
 
     /// Best image URL for a track: its own primary image, else its album's.

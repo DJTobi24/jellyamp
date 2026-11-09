@@ -10,6 +10,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    /// The system relaunched (or woke) the app because background downloads
+    /// finished; hand the completion handler to the download session.
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        BackgroundDownloadSession.shared.handleBackgroundEvents(identifier: identifier, completionHandler: completionHandler)
+    }
+
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         do {

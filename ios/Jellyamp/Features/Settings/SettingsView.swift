@@ -24,6 +24,14 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink {
+                        DownloadSettingsView()
+                    } label: {
+                        Label("Downloads & Offline", systemImage: "arrow.down.circle")
+                    }
+                }
+
+                Section {
+                    NavigationLink {
                         SonicSettingsView()
                     } label: {
                         LabeledContent("Sonic Server", value: container.isSonicServerActive ? "Connected" : "Jellyfin fallback")

@@ -306,6 +306,9 @@ struct ArtworkView: View {
     }
 
     private var imageURL: URL? {
+        // Covers of downloaded music are on disk; use them first so artwork
+        // shows offline (and costs no request online).
+        if let local = DownloadArtworkStore.localURL(itemID: itemID) { return local }
         guard let session = container.session else { return nil }
         return ImageURLBuilder.url(
             itemID: itemID,

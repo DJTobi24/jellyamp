@@ -31,6 +31,7 @@ struct RootView: View {
         }
         .tint(.white)
         .continuesListeningActivities()
+        .safeAreaInset(edge: .top, spacing: 0) { OfflineBanner() }
         .tabBarMinimizesOnScroll()
         .sheet(item: $container.pendingPlaylistTrack) { track in
             AddToPlaylistView(track: track)

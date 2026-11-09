@@ -26,6 +26,8 @@ final class DependencyContainer: ObservableObject {
     private(set) var libraryCache: LibraryCache?
     /// Offline downloads (download manager + on-disk store).
     private(set) var downloads: DownloadManager?
+    /// Offline state (banner), the offline library decorator and smart sync.
+    let offline = OfflineCoordinator()
     /// Lock screen / Control Center / interruption handling; alive as long
     /// as a session is active.
     private var systemMedia: SystemMediaController?
@@ -176,6 +178,7 @@ final class DependencyContainer: ObservableObject {
         player = nil
         systemMedia = nil
         libraryCache = nil
+        offline.deactivate()
         downloads?.clearAll()
         downloads = nil
         cancellables.removeAll()
@@ -192,6 +195,10 @@ final class DependencyContainer: ObservableObject {
         libraryCache = LibraryCache(scope: session.userID ?? "default")
         downloads = DownloadManager(session: session)
         library = MusicLibraryAPI(session: session, transport: makeSessionTransport())
+        // Serve downloads when offline mode is on or the server is unreachable.
+        if let downloads, let online = library {
+            library = offline.activate(wrapping: online, downloads: downloads, container: self)
+        }
         // Crossfade-capable engine (mixes two nodes). Swap back to
         // `EnginePlayer(...)` for the AVPlayer streaming engine if needed.
         let engine = AudioEnginePlayer(session: session, settings: settings, stateModel: playerState)
