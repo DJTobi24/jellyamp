@@ -53,14 +53,18 @@ struct BaseItemDto: Codable {
 /// decode are dropped instead of failing the page (see `LossyArray`).
 struct ItemsResponse: Decodable {
     var Items: [BaseItemDto]
+    /// Size of the whole result set, for paging; absent on some endpoints.
+    var TotalRecordCount: Int?
 
     private enum CodingKeys: String, CodingKey {
         case Items
+        case TotalRecordCount
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         Items = try container.decodeIfPresent(LossyArray<BaseItemDto>.self, forKey: .Items)?.elements ?? []
+        TotalRecordCount = try? container.decodeIfPresent(Int.self, forKey: .TotalRecordCount)
     }
 }
 

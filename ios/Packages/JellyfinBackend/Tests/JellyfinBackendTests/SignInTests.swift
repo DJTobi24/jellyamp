@@ -7,7 +7,7 @@ import FoundationNetworking
 
 /// Transport driven by a closure, so a test can answer per URL, count calls,
 /// throw transport errors and simulate redirects.
-final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
+final class SignInScriptedTransport: HTTPTransport, @unchecked Sendable {
     struct Reply {
         var status: Int
         var body: Data
@@ -166,7 +166,7 @@ final class ServerVersionTests: XCTestCase {
 
 final class ServerDiscoveryTests: XCTestCase {
     func testProbeReturnsServerInfo() async throws {
-        let transport = ScriptedTransport { _, _ in .json(publicInfo) }
+        let transport = SignInScriptedTransport { _, _ in .json(publicInfo) }
         let info = try await JellyfinServerDiscovery(transport: transport)
             .probe(url: URL(string: "http://jellyfin.local:8096")!)
         XCTAssertEqual(info.name, "Living Room")
@@ -178,7 +178,7 @@ final class ServerDiscoveryTests: XCTestCase {
     }
 
     func testDiscoverFallsBackToHTTPWhenHTTPSFails() async throws {
-        let transport = ScriptedTransport { request, _ in
+        let transport = SignInScriptedTransport { request, _ in
             if request.url?.scheme == "https" { throw URLError(.cannotConnectToHost) }
             return .json(publicInfo)
         }
@@ -187,7 +187,7 @@ final class ServerDiscoveryTests: XCTestCase {
     }
 
     func testDiscoverPrefersHTTPSEvenWhenHTTPAnswersFirst() async throws {
-        let transport = ScriptedTransport { request, _ in
+        let transport = SignInScriptedTransport { request, _ in
             if request.url?.scheme == "https" {
                 try await Task.sleep(nanoseconds: 150_000_000)
             }
@@ -198,7 +198,7 @@ final class ServerDiscoveryTests: XCTestCase {
     }
 
     func testDiscoverBareHostFindsDefaultPort() async throws {
-        let transport = ScriptedTransport { request, _ in
+        let transport = SignInScriptedTransport { request, _ in
             if request.url?.port == 8096 { return .json(publicInfo) }
             throw URLError(.cannotConnectToHost)
         }
@@ -207,7 +207,7 @@ final class ServerDiscoveryTests: XCTestCase {
     }
 
     func testAdoptsRedirectTarget() async throws {
-        let transport = ScriptedTransport { _, _ in
+        let transport = SignInScriptedTransport { _, _ in
             .json(publicInfo, finalURL: URL(string: "https://music.example.com/jellyfin/System/Info/Public")!)
         }
         let info = try await JellyfinServerDiscovery(transport: transport)
@@ -224,7 +224,7 @@ final class ServerDiscoveryTests: XCTestCase {
     }
 
     func testUnreachableHost() async {
-        let transport = ScriptedTransport { _, _ in throw URLError(.cannotFindHost) }
+        let transport = SignInScriptedTransport { _, _ in throw URLError(.cannotFindHost) }
         await assertThrows(.unreachable) {
             try await JellyfinServerDiscovery(transport: transport).discover(address: "nope.invalid")
         }
@@ -232,7 +232,7 @@ final class ServerDiscoveryTests: XCTestCase {
     }
 
     func testTLSProblemIsReportedOverUnreachable() async {
-        let transport = ScriptedTransport { request, _ in
+        let transport = SignInScriptedTransport { request, _ in
             if request.url?.scheme == "https" { throw URLError(.serverCertificateUntrusted) }
             throw URLError(.cannotConnectToHost)
         }
@@ -242,16 +242,16 @@ final class ServerDiscoveryTests: XCTestCase {
     }
 
     func testNotJellyfin() async {
-        let html = ScriptedTransport { _, _ in .json("<html><body>Router</body></html>") }
+        let html = SignInScriptedTransport { _, _ in .json("<html><body>Router</body></html>") }
         await assertThrows(.notJellyfin) {
             try await JellyfinServerDiscovery(transport: html).discover(address: "http://router.local")
         }
-        let notFound = ScriptedTransport { _, _ in .status(404) }
+        let notFound = SignInScriptedTransport { _, _ in .status(404) }
         await assertThrows(.notJellyfin) {
             try await JellyfinServerDiscovery(transport: notFound).discover(address: "http://router.local")
         }
         // Emby: same endpoint and shape, but no ProductName.
-        let emby = ScriptedTransport { _, _ in
+        let emby = SignInScriptedTransport { _, _ in
             .json(#"{"ServerName":"emby","Version":"4.8.10.0","Id":"abc","LocalAddress":"http://x:8096"}"#)
         }
         await assertThrows(.notJellyfin) {
@@ -261,7 +261,7 @@ final class ServerDiscoveryTests: XCTestCase {
 
     func testServerTooOld() async {
         let old = publicInfo.replacingOccurrences(of: "10.10.7", with: "10.8.13")
-        let transport = ScriptedTransport { _, _ in .json(old) }
+        let transport = SignInScriptedTransport { _, _ in .json(old) }
         await assertThrows(.serverTooOld(version: "10.8.13", minimum: "10.9")) {
             try await JellyfinServerDiscovery(transport: transport).discover(address: "http://old.local:8096")
         }
@@ -269,7 +269,7 @@ final class ServerDiscoveryTests: XCTestCase {
 
     func testTooOldBeatsOtherFailures() async {
         let old = publicInfo.replacingOccurrences(of: "10.10.7", with: "10.8.13")
-        let transport = ScriptedTransport { request, _ in
+        let transport = SignInScriptedTransport { request, _ in
             if request.url?.scheme == "https" { throw URLError(.secureConnectionFailed) }
             return .json(old)
         }
@@ -280,21 +280,21 @@ final class ServerDiscoveryTests: XCTestCase {
 
     func testServerNotSetUp() async {
         let fresh = publicInfo.replacingOccurrences(of: "\"StartupWizardCompleted\":true", with: "\"StartupWizardCompleted\":false")
-        let transport = ScriptedTransport { _, _ in .json(fresh) }
+        let transport = SignInScriptedTransport { _, _ in .json(fresh) }
         await assertThrows(.serverNotSetUp) {
             try await JellyfinServerDiscovery(transport: transport).discover(address: "http://new.local:8096")
         }
     }
 
     func testBadGatewayIsServerUnavailable() async {
-        let transport = ScriptedTransport { _, _ in .status(502) }
+        let transport = SignInScriptedTransport { _, _ in .status(502) }
         await assertThrows(.serverUnavailable(status: 502)) {
             try await JellyfinServerDiscovery(transport: transport).discover(address: "https://music.example.com")
         }
     }
 
     func testMissingServerNameFallsBackToHost() async throws {
-        let transport = ScriptedTransport { _, _ in
+        let transport = SignInScriptedTransport { _, _ in
             .json(#"{"Version":"10.9.0","ProductName":"Jellyfin Server","Id":"x"}"#)
         }
         let info = try await JellyfinServerDiscovery(transport: transport).probe(url: URL(string: "http://nas:8096")!)
@@ -302,7 +302,7 @@ final class ServerDiscoveryTests: XCTestCase {
     }
 
     func testCancellationIsNotReportedAsFailure() async {
-        let transport = ScriptedTransport { _, _ in
+        let transport = SignInScriptedTransport { _, _ in
             try await Task.sleep(nanoseconds: 5_000_000_000)
             return .json(publicInfo)
         }
@@ -322,7 +322,7 @@ final class ServerDiscoveryTests: XCTestCase {
 
 final class PasswordSignInTests: XCTestCase {
     func testSignInReturnsSessionAndUserName() async throws {
-        let transport = ScriptedTransport { _, _ in .json(authJSON) }
+        let transport = SignInScriptedTransport { _, _ in .json(authJSON) }
         let result = try await JellyfinAuthenticator(transport: transport)
             .signIn(session: freshSession, username: "tobi", password: "pw")
         XCTAssertEqual(result.userName, "tobi")
@@ -345,7 +345,7 @@ final class PasswordSignInTests: XCTestCase {
             (404, .unexpectedResponse),
         ]
         for (status, expected) in cases {
-            let transport = ScriptedTransport { _, _ in .status(status) }
+            let transport = SignInScriptedTransport { _, _ in .status(status) }
             await assertThrows(expected) {
                 try await JellyfinAuthenticator(transport: transport)
                     .signIn(session: freshSession, username: "tobi", password: "bad")
@@ -354,7 +354,7 @@ final class PasswordSignInTests: XCTestCase {
     }
 
     func testGarbageSuccessBodyIsUnexpectedResponse() async {
-        let transport = ScriptedTransport { _, _ in .json("<html>") }
+        let transport = SignInScriptedTransport { _, _ in .json("<html>") }
         await assertThrows(.unexpectedResponse) {
             try await JellyfinAuthenticator(transport: transport)
                 .signIn(session: freshSession, username: "tobi", password: "pw")
@@ -362,12 +362,12 @@ final class PasswordSignInTests: XCTestCase {
     }
 
     func testTransportErrorsAreTyped() async {
-        let offline = ScriptedTransport { _, _ in throw URLError(.notConnectedToInternet) }
+        let offline = SignInScriptedTransport { _, _ in throw URLError(.notConnectedToInternet) }
         await assertThrows(.unreachable) {
             try await JellyfinAuthenticator(transport: offline)
                 .signIn(session: freshSession, username: "tobi", password: "pw")
         }
-        let tls = ScriptedTransport { _, _ in throw URLError(.serverCertificateHasBadDate) }
+        let tls = SignInScriptedTransport { _, _ in throw URLError(.serverCertificateHasBadDate) }
         await assertThrows(.tlsFailure) {
             try await JellyfinAuthenticator(transport: tls)
                 .signIn(session: freshSession, username: "tobi", password: "pw")
@@ -375,7 +375,7 @@ final class PasswordSignInTests: XCTestCase {
     }
 
     func testLegacyAuthenticateByNameKeepsJellyfinError() async {
-        let transport = ScriptedTransport { _, _ in .status(403) }
+        let transport = SignInScriptedTransport { _, _ in .status(403) }
         do {
             _ = try await JellyfinAuthenticator(transport: transport)
                 .authenticateByName(session: freshSession, username: "tobi", password: "pw")
@@ -393,22 +393,22 @@ final class QuickConnectTests: XCTestCase {
     private let noSleep: @Sendable (TimeInterval) async throws -> Void = { _ in }
 
     func testEnabledProbe() async {
-        let on = ScriptedTransport { _, _ in .json("true") }
+        let on = SignInScriptedTransport { _, _ in .json("true") }
         let onResult = await JellyfinAuthenticator(transport: on).isQuickConnectEnabled(session: freshSession)
         XCTAssertTrue(onResult)
         XCTAssertEqual(on.requests.first?.url?.path, "/QuickConnect/Enabled")
 
-        let off = ScriptedTransport { _, _ in .json("false") }
+        let off = SignInScriptedTransport { _, _ in .json("false") }
         let offResult = await JellyfinAuthenticator(transport: off).isQuickConnectEnabled(session: freshSession)
         XCTAssertFalse(offResult)
 
-        let broken = ScriptedTransport { _, _ in throw URLError(.timedOut) }
+        let broken = SignInScriptedTransport { _, _ in throw URLError(.timedOut) }
         let brokenResult = await JellyfinAuthenticator(transport: broken).isQuickConnectEnabled(session: freshSession)
         XCTAssertFalse(brokenResult)
     }
 
     func testInitiate() async throws {
-        let transport = ScriptedTransport { _, _ in
+        let transport = SignInScriptedTransport { _, _ in
             .json(#"{"Authenticated":false,"Secret":"s3cret","Code":"123456","DeviceId":"d1"}"#)
         }
         let initiated = try await JellyfinAuthenticator(transport: transport).initiateQuickConnect(session: freshSession)
@@ -418,14 +418,14 @@ final class QuickConnectTests: XCTestCase {
     }
 
     func testInitiateWhenDisabled() async {
-        let transport = ScriptedTransport { _, _ in .status(401) }
+        let transport = SignInScriptedTransport { _, _ in .status(401) }
         await assertThrows(.quickConnectDisabled) {
             try await JellyfinAuthenticator(transport: transport).initiateQuickConnect(session: freshSession)
         }
     }
 
     func testWaitPollsUntilApprovedRidingOutHiccups() async throws {
-        let transport = ScriptedTransport { request, index in
+        let transport = SignInScriptedTransport { request, index in
             XCTAssertEqual(request.url?.query, "secret=s3cret")
             switch index {
             case 0: return .json(#"{"Authenticated":false}"#)
@@ -440,7 +440,7 @@ final class QuickConnectTests: XCTestCase {
     }
 
     func testWaitTimesOut() async {
-        let transport = ScriptedTransport { _, _ in .json(#"{"Authenticated":false}"#) }
+        let transport = SignInScriptedTransport { _, _ in .json(#"{"Authenticated":false}"#) }
         await assertThrows(.quickConnectExpired) {
             try await JellyfinAuthenticator(transport: transport, sleep: self.noSleep)
                 .waitForQuickConnectApproval(session: freshSession, state: self.state, pollInterval: 2, timeout: 10)
@@ -450,7 +450,7 @@ final class QuickConnectTests: XCTestCase {
     }
 
     func testWaitStopsWhenSecretIsUnknown() async {
-        let transport = ScriptedTransport { _, _ in .json("\"Unknown secret\"", status: 404) }
+        let transport = SignInScriptedTransport { _, _ in .json("\"Unknown secret\"", status: 404) }
         await assertThrows(.quickConnectExpired) {
             try await JellyfinAuthenticator(transport: transport, sleep: self.noSleep)
                 .waitForQuickConnectApproval(session: freshSession, state: self.state)
@@ -459,7 +459,7 @@ final class QuickConnectTests: XCTestCase {
     }
 
     func testWaitCancelsCleanly() async {
-        let transport = ScriptedTransport { _, _ in .json(#"{"Authenticated":false}"#) }
+        let transport = SignInScriptedTransport { _, _ in .json(#"{"Authenticated":false}"#) }
         let authenticator = JellyfinAuthenticator(transport: transport)
         let state = self.state
         let task = Task {
@@ -477,7 +477,7 @@ final class QuickConnectTests: XCTestCase {
     }
 
     func testSignInWithQuickConnect() async throws {
-        let transport = ScriptedTransport { _, _ in .json(authJSON) }
+        let transport = SignInScriptedTransport { _, _ in .json(authJSON) }
         let result = try await JellyfinAuthenticator(transport: transport)
             .signInWithQuickConnect(session: freshSession, state: state)
         XCTAssertEqual(result.userName, "tobi")
@@ -489,7 +489,7 @@ final class QuickConnectTests: XCTestCase {
     }
 
     func testSignInWithUnapprovedSecret() async {
-        let transport = ScriptedTransport { _, _ in .status(401) }
+        let transport = SignInScriptedTransport { _, _ in .status(401) }
         await assertThrows(.quickConnectExpired) {
             try await JellyfinAuthenticator(transport: transport)
                 .signInWithQuickConnect(session: freshSession, state: self.state)
@@ -508,7 +508,7 @@ final class SessionLifecycleTests: XCTestCase {
     )
 
     func testValidToken() async {
-        let transport = ScriptedTransport { _, _ in .json(#"{"Name":"tobi","Id":"user-1"}"#) }
+        let transport = SignInScriptedTransport { _, _ in .json(#"{"Name":"tobi","Id":"user-1"}"#) }
         let validity = await JellyfinAuthenticator(transport: transport).validate(session: signedIn)
         XCTAssertEqual(validity, .valid(userName: "tobi"))
         XCTAssertEqual(transport.requests.first?.url?.path, "/Users/Me")
@@ -516,48 +516,48 @@ final class SessionLifecycleTests: XCTestCase {
     }
 
     func testRejectedToken() async {
-        let transport = ScriptedTransport { _, _ in .status(401) }
+        let transport = SignInScriptedTransport { _, _ in .status(401) }
         let validity = await JellyfinAuthenticator(transport: transport).validate(session: signedIn)
         XCTAssertEqual(validity, .rejected)
     }
 
     func testOfflineAndServerTroubleKeepTheSession() async {
-        let offline = ScriptedTransport { _, _ in throw URLError(.notConnectedToInternet) }
+        let offline = SignInScriptedTransport { _, _ in throw URLError(.notConnectedToInternet) }
         let offlineResult = await JellyfinAuthenticator(transport: offline).validate(session: signedIn)
         XCTAssertEqual(offlineResult, .indeterminate)
 
         for status in [403, 404, 500, 502, 503] {
-            let transport = ScriptedTransport { _, _ in .status(status) }
+            let transport = SignInScriptedTransport { _, _ in .status(status) }
             let validity = await JellyfinAuthenticator(transport: transport).validate(session: signedIn)
             XCTAssertEqual(validity, .indeterminate, "\(status)")
         }
 
-        let captivePortal = ScriptedTransport { _, _ in .json("<html>Please log in to the Wi-Fi</html>") }
+        let captivePortal = SignInScriptedTransport { _, _ in .json("<html>Please log in to the Wi-Fi</html>") }
         let portalResult = await JellyfinAuthenticator(transport: captivePortal).validate(session: signedIn)
         XCTAssertEqual(portalResult, .indeterminate)
     }
 
     func testSessionWithoutTokenIsRejectedWithoutNetwork() async {
-        let transport = ScriptedTransport { _, _ in .status(200) }
+        let transport = SignInScriptedTransport { _, _ in .status(200) }
         let validity = await JellyfinAuthenticator(transport: transport).validate(session: freshSession)
         XCTAssertEqual(validity, .rejected)
         XCTAssertTrue(transport.requests.isEmpty)
     }
 
     func testLogoutPostsAndSwallowsFailures() async {
-        let transport = ScriptedTransport { _, _ in throw URLError(.notConnectedToInternet) }
+        let transport = SignInScriptedTransport { _, _ in throw URLError(.notConnectedToInternet) }
         await JellyfinAuthenticator(transport: transport).logout(session: signedIn)
         XCTAssertEqual(transport.requests.first?.httpMethod, "POST")
         XCTAssertEqual(transport.requests.first?.url?.path, "/Sessions/Logout")
 
-        let unauthenticated = ScriptedTransport { _, _ in .status(204) }
+        let unauthenticated = SignInScriptedTransport { _, _ in .status(204) }
         await JellyfinAuthenticator(transport: unauthenticated).logout(session: freshSession)
         XCTAssertTrue(unauthenticated.requests.isEmpty)
     }
 
     func testUnauthorizedReportingTransportReportsOnlyAuthenticated401s() async throws {
         let counter = Counter()
-        let base = ScriptedTransport { request, _ in
+        let base = SignInScriptedTransport { request, _ in
             .status(request.url!.path.contains("ok") ? 200 : 401)
         }
         let transport = UnauthorizedReportingTransport(base: base) { counter.increment() }
@@ -576,7 +576,7 @@ final class SessionLifecycleTests: XCTestCase {
 
     func testUnauthorizedReportingTransportWorksUnderAPIClients() async {
         let counter = Counter()
-        let base = ScriptedTransport { _, _ in .status(401) }
+        let base = SignInScriptedTransport { _, _ in .status(401) }
         let api = MusicLibraryAPI(
             session: signedIn,
             transport: UnauthorizedReportingTransport(base: base) { counter.increment() }
