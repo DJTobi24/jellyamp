@@ -87,6 +87,20 @@ final class DependencyContainer: ObservableObject {
         if let preset = EQPreset.builtIn(id: settings.activeEQPresetID) {
             engine.apply(eqPreset: preset)
         }
+        // Loudness-leveling fallbacks, injected as closures so the engine
+        // never sees the container: measured LUFS from the sonic server for
+        // tracks without a NormalizationGain tag (cached on disk), and the
+        // album's own gain for consecutive tracks of one album.
+        let loudness = LoudnessService { [weak self] trackID in
+            guard let self, let sonic = await self.loudnessCapableSonic() else { return nil }
+            let measured = try await sonic.loudness(forTrack: trackID)
+            return MeasuredLoudness(integratedLufs: measured.integratedLufs, truePeakDB: measured.truePeak)
+        }
+        engine.loudnessLookup = { trackID in await loudness.loudness(forTrack: trackID) }
+        engine.albumGainLookup = { [weak self] albumID in
+            guard let library = await self?.library else { return nil }
+            return (try? await library.album(id: albumID))?.normalizationGainDB
+        }
         systemMedia = SystemMediaController(player: engine, playerState: playerState, session: session)
         setupAutoplay()
         await rewireSonicProvider()
@@ -115,8 +129,13 @@ final class DependencyContainer: ObservableObject {
         maybeRefillRadio()
     }
 
+    /// The sonic provider, but only when it can measure loudness.
+    private func loudnessCapableSonic() -> SonicProviding? {
+        sonicCapabilities.supports(.loudness) ? sonic : nil
+    }
+
     private func maybeRefillRadio() {
-        guard autoplayEnabled, !isRefillingRadio,
+        guard autoplayEnabled, settings.autoplayEnabled, !isRefillingRadio,
               radioFeeder.needsRefill(remaining: playerState.upNext.count),
               let seed = playerState.currentTrack?.id,
               let sonic, let library, let player else { return }

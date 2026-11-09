@@ -65,6 +65,10 @@ public struct PlayQueue: Equatable, Sendable {
         return tracks[index]
     }
 
+    /// Queue index of `nextTrack` (the engine needs the position, not just
+    /// the track, to judge its album context).
+    public var nextTrackIndex: Int? { nextIndex() }
+
     private func nextIndex() -> Int? {
         guard let index = currentIndex, !tracks.isEmpty else { return nil }
         switch repeatMode {
