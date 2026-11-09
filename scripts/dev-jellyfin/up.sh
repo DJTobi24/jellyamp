@@ -80,7 +80,8 @@ fi
 EXPECTED="$(find "$STATE/music" -type f \( -name '*.mp3' -o -name '*.flac' -o -name '*.m4a' -o -name '*.ogg' \) | wc -l)"
 echo -n "waiting for library scan ($EXPECTED tracks)"
 for _ in $(seq 1 180); do
-  COUNT="$(api GET "/Items?includeItemTypes=Audio&recursive=true&limit=0" '' "$TOKEN" | json 'd["TotalRecordCount"]')"
+  # Count only tracks whose tags were already probed (they have an album).
+  COUNT="$(api GET "/Items?includeItemTypes=Audio&recursive=true&limit=1000&userId=$USER_ID" '' "$TOKEN" | json 'len([i for i in d["Items"] if i.get("AlbumId")])')"
   [[ "$COUNT" -ge "$EXPECTED" ]] && break
   echo -n "."; sleep 2
 done
