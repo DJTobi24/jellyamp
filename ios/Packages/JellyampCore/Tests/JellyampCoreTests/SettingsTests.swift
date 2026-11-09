@@ -24,6 +24,21 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: data), settings)
     }
 
+    func testScrobblingSettingsSavedBeforeAccountFieldsExistedStillDecode() throws {
+        let old = #"{"scrobbling":{"listenBrainzEnabled":true,"lastFMEnabled":false,"lastFMUsername":"rj"}}"#
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(old.utf8))
+        XCTAssertTrue(settings.scrobbling.listenBrainzEnabled)
+        XCTAssertEqual(settings.scrobbling.lastFMUsername, "rj")
+        XCTAssertNil(settings.scrobbling.listenBrainzUsername)
+        XCTAssertNil(settings.scrobbling.listenBrainzServerURL)
+
+        var updated = settings
+        updated.scrobbling.listenBrainzUsername = "rob"
+        updated.scrobbling.listenBrainzServerURL = URL(string: "https://listens.example.org")
+        let data = try JSONEncoder().encode(updated)
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: data), updated)
+    }
+
     func testEmptyObjectDecodesToDefaults() throws {
         XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8)), AppSettings())
     }
