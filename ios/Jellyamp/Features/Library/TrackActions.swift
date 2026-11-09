@@ -251,6 +251,8 @@ private struct TrackActionButtons: View {
         Button {
             actions.instantMix(from: track)
         } label: { Label("Instant Mix", systemImage: "wand.and.stars") }
+        TrackRadioMenuButton(track: track)
+        SonicAdventureMenuButton(track: track)
         Button {
             actions.toggleFavorite(itemID: track.id, serverValue: track.isFavorite)
         } label: {

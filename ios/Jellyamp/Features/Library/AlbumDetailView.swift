@@ -68,6 +68,7 @@ struct AlbumDetailView: View {
     @ViewBuilder
     private var headerAccessories: some View {
         FavoriteButton(itemID: album.id, isFavorite: current.isFavorite)
+        DownloadButton(album: current, tracks: tracks)
         AlbumMenuButton(album: current)
     }
 
@@ -77,7 +78,7 @@ struct AlbumDetailView: View {
     /// the loaded album, `tracks` its tracks.
     @ViewBuilder
     private var extraSections: some View {
-        EmptyView()
+        SimilarAlbumsSection(albumID: album.id, style: .listSection)
     }
 
     // MARK: - Sections

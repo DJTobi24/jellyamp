@@ -90,6 +90,7 @@ struct MiniPlayerView: View {
             .fullScreenCover(isPresented: $showNowPlaying) {
                 NowPlayingView(playerState: playerState)
                     .environmentObject(container)
+                    .libraryCoverPresentation()
             }
         }
     }
