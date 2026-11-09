@@ -293,4 +293,62 @@ final class LibraryBrowseLiveTests: XCTestCase {
         XCTAssertEqual(found.items.count, 1)
         XCTAssertTrue(["Slow Water", "Slow Train"].contains(found.items.first?.title ?? ""))
     }
+
+    /// Replays the app's reorder flow (send the natural Move, compare with
+    /// the server, send `legacyMoveOperations` if the order differs) for
+    /// every from/to pair of a five-track playlist. Needs a user login
+    /// (`JELLYFIN_USER` / `JELLYFIN_PASSWORD`): the Move endpoint rejects API
+    /// keys. Creates one playlist and deletes it again.
+    func testPlaylistReorderConvergesOnRealServer() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let urlString = environment["JELLYFIN_LIVE_URL"], let url = URL(string: urlString),
+              let user = environment["JELLYFIN_USER"], let password = environment["JELLYFIN_PASSWORD"] else {
+            throw XCTSkip("no live Jellyfin login configured")
+        }
+        let session = try await JellyfinAuthenticator().authenticateByName(
+            session: JellyfinSession(serverURL: url, deviceID: "live-test-reorder"), username: user, password: password
+        )
+        let library = MusicLibraryAPI(session: session)
+        let browser = LibraryBrowseAPI(session: session)
+        let songs = try await browser.tracksPage(sort: TrackSortOption.title.query(), filter: .none, startIndex: 0, limit: 5).items
+        XCTAssertEqual(songs.count, 5)
+        let playlistID = try await library.createPlaylist(name: "zz-reorder-live-test", itemIDs: songs.map(\.id))
+
+        func serverOrder() async throws -> [String] {
+            try await browser.playlistTracksPage(playlistID: playlistID, startIndex: 0, limit: 100).items.compactMap(\.playlistEntryID)
+        }
+
+        var failures: [String] = []
+        var corrected = 0
+        do {
+            let count = try await serverOrder().count
+            XCTAssertEqual(count, 5)
+            for from in 0..<count {
+                for to in 0..<count where to != from {
+                    let current = try await serverOrder()
+                    var desired = current
+                    let moved = desired.remove(at: from)
+                    desired.insert(moved, at: to)
+
+                    try await library.movePlaylistItem(playlistID: playlistID, entryID: moved, toIndex: to)
+                    var result = try await serverOrder()
+                    if result != desired {
+                        corrected += 1
+                        let operations = try XCTUnwrap(PlaylistEditing.legacyMoveOperations(current: result, desired: desired))
+                        for operation in operations {
+                            try await library.movePlaylistItem(playlistID: playlistID, entryID: operation.entryID, toIndex: operation.index)
+                        }
+                        result = try await serverOrder()
+                    }
+                    if result != desired { failures.append("\(from)→\(to)") }
+                }
+            }
+        } catch {
+            try? await library.deletePlaylist(playlistID: playlistID)
+            throw error
+        }
+        try await library.deletePlaylist(playlistID: playlistID)
+        XCTAssertEqual(failures, [], "moves that did not converge")
+        print("reorder live test: \(corrected) of 20 moves needed the legacy correction")
+    }
 }

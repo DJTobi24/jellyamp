@@ -539,6 +539,34 @@ final class PlaylistEditingTests: XCTestCase {
         XCTAssertEqual(sim(["Adagio", "Allegro", "Arc", "Blast"], "Arc", 0), ["Adagio", "Arc", "Allegro", "Blast"])
         XCTAssertEqual(sim(["Adagio", "Arc", "Allegro", "Blast"], "Adagio", 1), ["Arc", "Allegro", "Adagio", "Blast"])
         XCTAssertEqual(sim(["Arc", "Adagio", "Allegro", "Blast"], "Adagio", 0), ["Arc", "Adagio", "Allegro", "Blast"])
+        // Requesting the current index is a no-op (the live reorder test
+        // showed that "first row to index 0" does not swap the first two).
+        XCTAssertEqual(sim(["Adagio", "Arc", "Allegro"], "Adagio", 0), ["Adagio", "Arc", "Allegro"])
+        XCTAssertEqual(sim(["Adagio", "Arc", "Allegro"], "Adagio", 9), ["Arc", "Allegro", "Adagio"])
+        XCTAssertEqual(sim(["Adagio", "Arc"], "missing", 1), ["Adagio", "Arc"])
+    }
+
+    func testNaturalRequestPlusCorrectionConvergesOnTheQuirkyServer() {
+        // The app's flow: send Move/{finalIndex}, compare, then correct.
+        for count in 2...7 {
+            let start = (0..<count).map { "e\($0)" }
+            for from in 0..<count {
+                for to in 0..<count where to != from {
+                    var desired = start
+                    let moved = desired.remove(at: from)
+                    desired.insert(moved, at: to)
+                    var server = PlaylistEditing.simulateLegacyServerMove(start, id: moved, requestedIndex: to)
+                    guard let corrections = PlaylistEditing.legacyMoveOperations(current: server, desired: desired) else {
+                        return XCTFail("no correction for \(count) rows, \(from) → \(to)")
+                    }
+                    XCTAssertLessThanOrEqual(corrections.count, 2)
+                    for operation in corrections {
+                        server = PlaylistEditing.simulateLegacyServerMove(server, id: operation.entryID, requestedIndex: operation.index)
+                    }
+                    XCTAssertEqual(server, desired, "\(count) rows, \(from) → \(to)")
+                }
+            }
+        }
     }
 
     func testLegacyOperationsReachEveryTargetOnTheQuirkyServer() {
@@ -552,7 +580,7 @@ final class PlaylistEditingTests: XCTestCase {
                     guard let operations = PlaylistEditing.legacyMoveOperations(current: current, desired: desired) else {
                         return XCTFail("no plan for \(count) rows, \(from) → \(to)")
                     }
-                    XCTAssertLessThanOrEqual(operations.count, 2)
+                    XCTAssertLessThanOrEqual(operations.count, 3)
                     var server = current
                     for operation in operations {
                         server = PlaylistEditing.simulateLegacyServerMove(server, id: operation.entryID, requestedIndex: operation.index)

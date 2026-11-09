@@ -88,18 +88,26 @@ public enum PlaylistEditing {
     // MARK: - Jellyfin 10.10 move quirk
 
     /// What Jellyfin 10.10 actually does with `Move/{requestedIndex}`
-    /// (verified against 10.10.7): the item is inserted *after* the item that
-    /// currently sits at the requested index when moving down, and after the
-    /// one before it when moving up. Consequences: moving down lands one row
-    /// too low, and nothing can be moved to the very top directly.
+    /// (verified against 10.10.7, every from/to pair of a five-track list):
+    ///
+    /// - requesting the index the item already has does nothing,
+    /// - requesting the last index (or beyond) appends the item,
+    /// - otherwise the item is inserted *after* the item that currently sits
+    ///   at the requested index when moving down, and after the one before
+    ///   it when moving up.
+    ///
+    /// Consequences: a move down lands one row too low, a move up is exact,
+    /// and nothing can be moved to the very top directly.
     public static func simulateLegacyServerMove(_ order: [String], id: String, requestedIndex: Int) -> [String] {
-        guard let oldIndex = order.firstIndex(of: id), !order.isEmpty else { return order }
-        let requested = min(max(0, requestedIndex), order.count - 1)
-        let priorIndex = requested > oldIndex ? requested : max(0, requested - 1)
-        let insertionIndex = priorIndex + 1
+        guard let oldIndex = order.firstIndex(of: id), requestedIndex != oldIndex, requestedIndex >= 0 else { return order }
         var result = order
         result.remove(at: oldIndex)
-        result.insert(id, at: min(insertionIndex, result.count))
+        if requestedIndex >= result.count {
+            result.append(id)
+        } else {
+            let priorIndex = requestedIndex > oldIndex ? requestedIndex : max(0, requestedIndex - 1)
+            result.insert(id, at: min(priorIndex + 1, result.count))
+        }
         return result
     }
 
@@ -110,29 +118,38 @@ public enum PlaylistEditing {
     public static func legacyMoveOperations(current: [String], desired: [String]) -> [PlaylistMoveOperation]? {
         if current == desired { return [] }
         guard let move = singleMove(from: current, to: desired) else { return nil }
-        let (id, from, to) = move
+        return legacyMoveOperations(current: current, id: move.id, from: move.from, to: move.to)
+    }
+
+    private static func legacyMoveOperations(current: [String], id: String, from: Int, to: Int) -> [PlaylistMoveOperation] {
         let last = current.count - 1
-        if to == 0 {
-            // Nothing lands on top directly: park the row in second place,
-            // then push the old first row down behind it.
-            var operations: [PlaylistMoveOperation] = []
-            if from > 1 { operations.append(PlaylistMoveOperation(entryID: id, index: 1)) }
-            operations.append(PlaylistMoveOperation(entryID: current[0], index: 0))
-            return operations
-        }
-        if to < from {
-            return [PlaylistMoveOperation(entryID: id, index: to)]
-        }
+        if to == from { return [] }
         if to == last {
-            return [PlaylistMoveOperation(entryID: id, index: to)]
+            // The last index appends.
+            return [PlaylistMoveOperation(entryID: id, index: last)]
         }
         if to > from + 1 {
+            // Moving down lands one row below the requested index.
             return [PlaylistMoveOperation(entryID: id, index: to - 1)]
         }
-        // One step down (not onto the last row).
-        if from == 0 {
-            return [PlaylistMoveOperation(entryID: id, index: 0)]
+        if to == from + 1 {
+            // One step down: asking for `to` overshoots to `to + 1`, from
+            // where the (exact) move up brings the row back to `to`.
+            return [PlaylistMoveOperation(entryID: id, index: to), PlaylistMoveOperation(entryID: id, index: to)]
         }
-        return [PlaylistMoveOperation(entryID: current[from + 1], index: from)]
+        if to >= 1 {
+            // Moving up is exact.
+            return [PlaylistMoveOperation(entryID: id, index: to)]
+        }
+        // To the top: nothing lands on index 0 directly. Park the row in
+        // second place, then move the old first row one step down past it.
+        var operations: [PlaylistMoveOperation] = []
+        var order = current
+        if from > 1 {
+            operations.append(PlaylistMoveOperation(entryID: id, index: 1))
+            order = simulateLegacyServerMove(order, id: id, requestedIndex: 1)
+        }
+        operations += legacyMoveOperations(current: order, id: order[0], from: 0, to: 1)
+        return operations
     }
 }
