@@ -37,3 +37,6 @@ server/jellyamp_server/analysis/models/*.pb
 .idea/
 .vscode/
 *.swp
+
+# Claude Code agent worktrees
+.claude/worktrees/
