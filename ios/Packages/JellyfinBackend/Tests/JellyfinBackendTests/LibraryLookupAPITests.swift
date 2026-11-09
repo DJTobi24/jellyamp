@@ -7,7 +7,7 @@ import FoundationNetworking
 
 /// Answers each request from a closure, so tests can serve different bodies
 /// per chunk and inspect the queries.
-private final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
+private final class LookupScriptedTransport: HTTPTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [URLRequest] = []
     private let handler: @Sendable (URLRequest) -> (status: Int, body: String)
@@ -51,7 +51,7 @@ private let lookupSession = JellyfinSession(
 final class LibraryLookupAPITests: XCTestCase {
     func testAlbumsByIDsKeepRequestedOrderAndDropUnknown() async throws {
         // Jellyfin answers in library order, not in `ids` order.
-        let transport = ScriptedTransport { _ in
+        let transport = LookupScriptedTransport { _ in
             (200, """
             {"Items":[
               {"Id":"b","Name":"Bravo","Type":"MusicAlbum","AlbumArtists":[{"Name":"Band","Id":"artist1"}],"ChildCount":4,
@@ -77,7 +77,7 @@ final class LibraryLookupAPITests: XCTestCase {
     }
 
     func testArtistsByIDsMapArtistFields() async throws {
-        let transport = ScriptedTransport { _ in
+        let transport = LookupScriptedTransport { _ in
             (200, """
             {"Items":[{"Id":"ar1","Name":"Aurora Drift","Type":"MusicArtist","Genres":["Ambient"],
                        "UserData":{"IsFavorite":true},"ImageTags":{}}]}
@@ -89,7 +89,7 @@ final class LibraryLookupAPITests: XCTestCase {
     }
 
     func testEmptyIDListMakesNoRequest() async throws {
-        let transport = ScriptedTransport { _ in (500, "") }
+        let transport = LookupScriptedTransport { _ in (500, "") }
         let api = LibraryLookupAPI(session: lookupSession, transport: transport)
         let albums = try await api.albums(byIDs: [])
         let tracks = try await api.tracks(byIDs: ["", ""])
@@ -101,7 +101,7 @@ final class LibraryLookupAPITests: XCTestCase {
     func testLongIDListsAreChunkedAndOrderSurvives() async throws {
         let ids = (0..<(LibraryLookupAPI.chunkSize * 2 + 5)).map { "t\($0)" }
         // Echo the requested chunk back reversed to prove reordering.
-        let transport = ScriptedTransport { request in
+        let transport = LookupScriptedTransport { request in
             let chunk = (queryValue("ids", in: request) ?? "").split(separator: ",").reversed()
             let items = chunk.map { "{\"Id\":\"\($0)\",\"Name\":\"Song \($0)\",\"Type\":\"Audio\",\"RunTimeTicks\":10000000}" }
             return (200, "{\"Items\":[\(items.joined(separator: ","))]}")
@@ -117,7 +117,7 @@ final class LibraryLookupAPITests: XCTestCase {
     }
 
     func testProductionYearsAreSortedAndDistinct() async throws {
-        let transport = ScriptedTransport { _ in
+        let transport = LookupScriptedTransport { _ in
             (200, #"{"Genres":["Jazz"],"Tags":[],"OfficialRatings":[],"Years":[2003,1959,2003,1994]}"#)
         }
         let api = LibraryLookupAPI(session: lookupSession, transport: transport)
@@ -130,13 +130,13 @@ final class LibraryLookupAPITests: XCTestCase {
     }
 
     func testProductionYearsTolerateMissingKey() async throws {
-        let transport = ScriptedTransport { _ in (200, #"{"Genres":[]}"#) }
+        let transport = LookupScriptedTransport { _ in (200, #"{"Genres":[]}"#) }
         let years = try await LibraryLookupAPI(session: lookupSession, transport: transport).productionYears()
         XCTAssertTrue(years.isEmpty)
     }
 
     func testRandomTracksBuildGenreAndYearQuery() async throws {
-        let transport = ScriptedTransport { _ in
+        let transport = LookupScriptedTransport { _ in
             (200, #"{"Items":[{"Id":"t1","Name":"Rain on Ninth","Type":"Audio","ProductionYear":1959,"Genres":["Jazz"]}]}"#)
         }
         let api = LibraryLookupAPI(session: lookupSession, transport: transport)
@@ -154,14 +154,14 @@ final class LibraryLookupAPITests: XCTestCase {
     }
 
     func testRandomTracksWithoutFiltersOmitThem() async throws {
-        let transport = ScriptedTransport { _ in (200, #"{"Items":[]}"#) }
+        let transport = LookupScriptedTransport { _ in (200, #"{"Items":[]}"#) }
         _ = try await LibraryLookupAPI(session: lookupSession, transport: transport).randomTracks(limit: 10)
         XCTAssertNil(queryValue("genres", in: transport.requests[0]))
         XCTAssertNil(queryValue("years", in: transport.requests[0]))
     }
 
     func testErrorsMapToJellyfinError() async {
-        let transport = ScriptedTransport { _ in (401, "") }
+        let transport = LookupScriptedTransport { _ in (401, "") }
         let api = LibraryLookupAPI(session: lookupSession, transport: transport)
         do {
             _ = try await api.albums(byIDs: ["a"])
