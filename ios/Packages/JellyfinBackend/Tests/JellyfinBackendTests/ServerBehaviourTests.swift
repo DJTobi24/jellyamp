@@ -156,4 +156,64 @@ final class ServerBehaviourTests: XCTestCase {
         XCTAssertEqual(removed, ids)
         XCTAssertTrue(transport.requests.allSatisfy { ($0.url?.query?.count ?? 0) < 4_000 })
     }
+
+    // MARK: Playlist reordering
+
+    /// A playlist "p" whose entries are listed as `order` after the move call.
+    private func playlistTransport(orderAfterMove order: [String], moveStatus: Int = 204) -> ScriptedTransport {
+        let transport = ScriptedTransport()
+        transport.on("/Move/", method: "POST", status: moveStatus)
+        transport.on("Playlists/p/Items", method: "GET", json: itemsJSON(order.map {
+            item("item-\($0)", "\"PlaylistItemId\":\"entry-\($0)\"")
+        }))
+        transport.on("Playlists/p", method: "POST", status: 204)
+        return transport
+    }
+
+    func testMoveIsLeftAloneWhenTheServerGotItRight() async throws {
+        let transport = playlistTransport(orderAfterMove: ["c", "a", "b"])
+        try await api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-c", toIndex: 0)
+        XCTAssertEqual(transport.requests.map { "\($0.httpMethod!) \($0.url!.path)" }, [
+            "POST /Playlists/p/Items/entry-c/Move/0",
+            "GET /Playlists/p/Items",
+        ])
+        XCTAssertEqual(transport.query(1)["userId"], "user-1")
+    }
+
+    func testMoveIsRepairedWhenTheServerMisplacesTheEntry() async throws {
+        // Jellyfin 10.10.7, asked to move the last of three entries to the
+        // top, puts it second.
+        let transport = playlistTransport(orderAfterMove: ["a", "c", "b"])
+        try await api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-c", toIndex: 0)
+        XCTAssertEqual(transport.requests.count, 3)
+        XCTAssertEqual(transport.requests[2].httpMethod, "POST")
+        XCTAssertEqual(transport.requests[2].url?.path, "/Playlists/p")
+        XCTAssertEqual(transport.jsonBody(2)["Ids"] as? [String], ["item-c", "item-a", "item-b"])
+    }
+
+    func testMoveSurvivesTheServerCrashingOnAnIndexPastTheEnd() async throws {
+        // 10.10 answers 500 (IndexOutOfRange) and moves nothing.
+        let transport = playlistTransport(orderAfterMove: ["a", "b", "c"], moveStatus: 500)
+        try await api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-a", toIndex: 99)
+        XCTAssertEqual(transport.jsonBody(2)["Ids"] as? [String], ["item-b", "item-c", "item-a"])
+    }
+
+    func testMoveOfAnEntryThatIsNotInThePlaylistIsNotFound() async throws {
+        // 10.10 answers 500 (NullReference) for an unknown entry.
+        let transport = playlistTransport(orderAfterMove: ["a", "b"], moveStatus: 500)
+        await assertThrows(.notFound) {
+            try await self.api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-x", toIndex: 0)
+        }
+        XCTAssertEqual(transport.requests.count, 2, "nothing is rewritten")
+    }
+
+    func testMoveInAMissingPlaylistOrWithoutSessionStopsAtTheFirstAnswer() async throws {
+        for (status, expected) in [(404, JellyfinError.notFound), (401, .unauthorized)] {
+            let transport = playlistTransport(orderAfterMove: ["a", "b"], moveStatus: status)
+            await assertThrows(expected) {
+                try await self.api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-a", toIndex: 1)
+            }
+            XCTAssertEqual(transport.requests.count, 1)
+        }
+    }
 }

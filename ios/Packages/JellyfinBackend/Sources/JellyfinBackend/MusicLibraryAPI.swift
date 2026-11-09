@@ -212,11 +212,39 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         }
     }
 
+    /// Moves a playlist entry so that it ends up at position `toIndex` (0-based,
+    /// counted in the playlist as it is after the move; clamped to its end).
+    ///
+    /// Jellyfin's move endpoint cannot be trusted with that on its own: 10.10
+    /// puts the entry one slot off for most moves (it can never move an entry
+    /// to the top), and answers 500 for an index past the end or an unknown
+    /// entry. So the result is checked, and if the entry is not where it was
+    /// asked to be, the playlist's order is written explicitly.
     public func movePlaylistItem(playlistID: String, entryID: String, toIndex: Int) async throws {
-        try await sendExpectingSuccess(client.request(
-            path: "Playlists/\(playlistID)/Items/\(entryID)/Move/\(toIndex)",
-            method: "POST"
-        ))
+        do {
+            try await sendExpectingSuccess(client.request(
+                path: "Playlists/\(playlistID)/Items/\(entryID)/Move/\(toIndex)",
+                method: "POST"
+            ))
+        } catch JellyfinError.serverError(let status) where status >= 500 {
+            // The 10.10 crash; whether anything moved shows below.
+        }
+        let entries = try await items(path: "Playlists/\(playlistID)/Items", query: [
+            URLQueryItem(name: "fields", value: "ParentId"),
+            URLQueryItem(name: "enableUserData", value: "false"),
+            URLQueryItem(name: "enableImages", value: "false"),
+        ])
+        guard let current = entries.firstIndex(where: { JellyfinClient.sameID($0.PlaylistItemId ?? "", entryID) }) else {
+            throw JellyfinError.notFound
+        }
+        let target = min(max(toIndex, 0), entries.count - 1)
+        guard current != target else { return }
+        // A single misplaced entry leaves the others in their order, so
+        // taking it out and putting it where it belongs is the intended list.
+        var order = entries.map(\.Id)
+        order.insert(order.remove(at: current), at: target)
+        let body = try JSONSerialization.data(withJSONObject: ["Ids": order])
+        try await sendExpectingSuccess(client.request(path: "Playlists/\(playlistID)", method: "POST", body: body))
     }
 
     public func renamePlaylist(playlistID: String, name: String) async throws {
