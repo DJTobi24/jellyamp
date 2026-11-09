@@ -10,6 +10,8 @@ xcuserdata/
 *.ipa
 *.dSYM.zip
 *.dSYM
+# Per-developer build secrets (Last.fm API key); see ios/Config/Secrets.example.xcconfig
+ios/Config/Secrets.xcconfig
 
 # Swift Package Manager
 .build/

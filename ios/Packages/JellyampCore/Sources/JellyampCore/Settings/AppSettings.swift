@@ -71,11 +71,24 @@ public struct ScrobblingSettings: Codable, Equatable, Sendable {
     public var lastFMEnabled: Bool
     /// Display only; set after a successful Last.fm sign-in.
     public var lastFMUsername: String?
+    /// Display only; set after the ListenBrainz token was validated.
+    /// (Optional so payloads saved before it existed still decode.)
+    public var listenBrainzUsername: String?
+    /// Self-hosted ListenBrainz-compatible API root; nil = listenbrainz.org.
+    public var listenBrainzServerURL: URL?
 
-    public init(listenBrainzEnabled: Bool = false, lastFMEnabled: Bool = false, lastFMUsername: String? = nil) {
+    public init(
+        listenBrainzEnabled: Bool = false,
+        lastFMEnabled: Bool = false,
+        lastFMUsername: String? = nil,
+        listenBrainzUsername: String? = nil,
+        listenBrainzServerURL: URL? = nil
+    ) {
         self.listenBrainzEnabled = listenBrainzEnabled
         self.lastFMEnabled = lastFMEnabled
         self.lastFMUsername = lastFMUsername
+        self.listenBrainzUsername = listenBrainzUsername
+        self.listenBrainzServerURL = listenBrainzServerURL
     }
 }
 

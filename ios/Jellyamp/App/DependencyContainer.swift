@@ -29,6 +29,8 @@ final class DependencyContainer: ObservableObject {
     /// Single shared bridge the player views observe; the active `EnginePlayer`
     /// pushes state into it. Lives for the whole app session.
     let playerState = PlayerStateModel()
+    /// Last.fm / ListenBrainz scrobbling; follows `playerState` while signed in.
+    let scrobbling = ScrobbleService()
 
     /// Autoplay ("radio"): when the queue runs low, append similar tracks.
     var autoplayEnabled = true
@@ -146,6 +148,10 @@ final class DependencyContainer: ObservableObject {
         downloads = nil
         cancellables.removeAll()
         playHistory = []
+        // Scrobbling accounts are personal: forget them with the session.
+        scrobbling.signOut()
+        settings.scrobbling = ScrobblingSettings()
+        settingsStore.save(settings)
     }
 
     private func activate(session: JellyfinSession) async {
@@ -162,6 +168,7 @@ final class DependencyContainer: ObservableObject {
         }
         systemMedia = SystemMediaController(player: engine, playerState: playerState, session: session)
         setupAutoplay()
+        scrobbling.start(playerState: playerState, settings: settings.scrobbling)
         await rewireSonicProvider()
     }
 
@@ -225,6 +232,7 @@ final class DependencyContainer: ObservableObject {
     func saveSettings() {
         settingsStore.save(settings)
         player?.updateSettings(settings)
+        scrobbling.apply(settings.scrobbling)
     }
 
     private static func persistentDeviceID() -> String {

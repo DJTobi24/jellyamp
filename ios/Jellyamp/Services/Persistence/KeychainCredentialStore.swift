@@ -104,3 +104,39 @@ private struct StoredSession: Codable {
         JellyfinSession(serverURL: serverURL, deviceID: deviceID, accessToken: accessToken, userID: userID)
     }
 }
+
+// MARK: - Scrobbling credentials
+
+/// ListenBrainz user token and Last.fm session key. Kept apart from
+/// `clear()` because they belong to the scrobbling accounts, not the
+/// Jellyfin login; `ScrobbleService` removes them on disconnect / sign-out.
+extension KeychainCredentialStore {
+    func saveListenBrainzToken(_ token: String) {
+        store(key: "listenBrainzToken", data: Data(token.utf8))
+    }
+
+    func loadListenBrainzToken() -> String? {
+        load(key: "listenBrainzToken").map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    func deleteListenBrainzToken() {
+        delete(key: "listenBrainzToken")
+    }
+
+    func saveLastFMSessionKey(_ key: String) {
+        store(key: "lastFMSessionKey", data: Data(key.utf8))
+    }
+
+    func loadLastFMSessionKey() -> String? {
+        load(key: "lastFMSessionKey").map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    func deleteLastFMSessionKey() {
+        delete(key: "lastFMSessionKey")
+    }
+
+    func clearScrobblingCredentials() {
+        delete(key: "listenBrainzToken")
+        delete(key: "lastFMSessionKey")
+    }
+}
