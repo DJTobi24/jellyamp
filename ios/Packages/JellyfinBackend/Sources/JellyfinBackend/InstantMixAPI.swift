@@ -9,17 +9,16 @@ import FoundationNetworking
 /// and the radio features in Phase 2.
 public final class InstantMixAPI: @unchecked Sendable {
     private let session: JellyfinSession
-    private let transport: HTTPTransport
-    private let decoder = JSONDecoder()
+    private let client: JellyfinClient
 
     public init(session: JellyfinSession, transport: HTTPTransport = URLSessionTransport()) {
         self.session = session
-        self.transport = transport
+        self.client = JellyfinClient(session: session, transport: transport)
     }
 
     /// `/Items/{id}/InstantMix` — works with track/album/artist/genre/playlist seeds.
     public func instantMix(seedID: String, limit: Int) async throws -> [String] {
-        let request = session.request(path: "Items/\(seedID)/InstantMix", query: [
+        let request = client.request(path: "Items/\(seedID)/InstantMix", query: [
             URLQueryItem(name: "userId", value: session.userID ?? ""),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
@@ -28,7 +27,7 @@ public final class InstantMixAPI: @unchecked Sendable {
     }
 
     public func similarItems(to itemID: String, limit: Int) async throws -> [String] {
-        let request = session.request(path: "Items/\(itemID)/Similar", query: [
+        let request = client.request(path: "Items/\(itemID)/Similar", query: [
             URLQueryItem(name: "userId", value: session.userID ?? ""),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
@@ -50,18 +49,11 @@ public final class InstantMixAPI: @unchecked Sendable {
         if let yearRange {
             query.append(URLQueryItem(name: "years", value: yearRange.map(String.init).joined(separator: ",")))
         }
-        let response: ItemsResponse = try await execute(session.request(path: "Items", query: query))
+        let response: ItemsResponse = try await execute(client.request(path: "Items", query: query))
         return response.Items.map(\.Id)
     }
 
     private func execute<T: Decodable>(_ request: URLRequest) async throws -> T {
-        let (data, response) = try await transport.send(request)
-        guard (200..<300).contains(response.statusCode) else {
-            throw JellyfinError.serverError(status: response.statusCode)
-        }
-        guard let decoded = try? decoder.decode(T.self, from: data) else {
-            throw JellyfinError.invalidResponse
-        }
-        return decoded
+        try await client.decode(from: request)
     }
 }
