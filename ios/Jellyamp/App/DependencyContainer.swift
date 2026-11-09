@@ -263,10 +263,14 @@ final class DependencyContainer: ObservableObject {
         guard let session else { return }
         if let url = settings.sonicServerURL,
            let apiKey = credentialStore.loadSonicAPIKey(),
-           case .available(let capabilities) = await SonicServerDiscovery().probe(baseURL: url, apiKey: apiKey) {
+           case .available(let capabilities) = await SonicServerDiscovery().probe(baseURL: url, apiKey: apiKey),
+           !capabilities.capabilities.isEmpty {
             sonic = SonicAPIClient(baseURL: url, apiKey: apiKey)
             sonicCapabilities = capabilities
         } else {
+            // Also taken while a freshly installed sonic server has not analyzed
+            // anything yet (it reports no capabilities): Jellyfin's Instant Mix
+            // keeps working until the first scan finishes.
             let fallback = JellyfinFallbackSonicProvider(source: InstantMixAdapter(api: InstantMixAPI(session: session, transport: makeSessionTransport())))
             sonic = fallback
             sonicCapabilities = fallback.capabilities
