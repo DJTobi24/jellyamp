@@ -340,16 +340,9 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         let response = try await items(query: [
             URLQueryItem(name: "includeItemTypes", value: "Playlist"),
             URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "SortName"),
         ])
-        return response.map {
-            Playlist(
-                id: $0.Id,
-                name: $0.Name ?? "",
-                trackCount: $0.ChildCount,
-                duration: $0.RunTimeTicks.map { Double($0) / 10_000_000 },
-                imageTag: $0.ImageTags?["Primary"]
-            )
-        }
+        return response.map(DTOMapper.playlist(from:))
     }
 
     public func tracks(inPlaylist playlistID: String) async throws -> [Track] {
@@ -386,31 +379,29 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     public func search(query: String, limit: Int = 20) async throws -> (tracks: [Track], albums: [Album], artists: [Artist], playlists: [Playlist]) {
-        func searchQuery(type: String) -> [URLQueryItem] {
-            [
-                URLQueryItem(name: "searchTerm", value: query),
+        // The server matches the term as typed: a trailing space (which the
+        // keyboard adds after every autocompleted word) finds nothing.
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return ([], [], [], []) }
+        // One request per kind so each kind gets its own `limit`; they are
+        // independent, so they run side by side.
+        @Sendable func found(_ type: String) async throws -> [BaseItemDto] {
+            try await self.items(query: [
+                URLQueryItem(name: "searchTerm", value: term),
                 URLQueryItem(name: "includeItemTypes", value: type),
                 URLQueryItem(name: "recursive", value: "true"),
                 URLQueryItem(name: "limit", value: String(limit)),
-            ]
+            ])
         }
-        let trackItems = try await items(query: searchQuery(type: "Audio"))
-        let albumItems = try await items(query: searchQuery(type: "MusicAlbum"))
-        let artistItems = try await items(query: searchQuery(type: "MusicArtist"))
-        let playlistItems = try await items(query: searchQuery(type: "Playlist"))
-        return (
+        async let trackItems = found("Audio")
+        async let albumItems = found("MusicAlbum")
+        async let artistItems = found("MusicArtist")
+        async let playlistItems = found("Playlist")
+        return try await (
             tracks: trackItems.map(DTOMapper.track(from:)),
             albums: albumItems.map(DTOMapper.album(from:)),
             artists: artistItems.map(DTOMapper.artist(from:)),
-            playlists: playlistItems.map {
-                Playlist(
-                    id: $0.Id,
-                    name: $0.Name ?? "",
-                    trackCount: $0.ChildCount,
-                    duration: $0.RunTimeTicks.map { Double($0) / 10_000_000 },
-                    imageTag: $0.ImageTags?["Primary"]
-                )
-            }
+            playlists: playlistItems.map(DTOMapper.playlist(from:))
         )
     }
 

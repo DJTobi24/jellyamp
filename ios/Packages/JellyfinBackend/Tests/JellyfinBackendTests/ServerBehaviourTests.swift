@@ -254,4 +254,28 @@ final class ServerBehaviourTests: XCTestCase {
         }
         XCTAssertEqual(expired.requests.count, 1)
     }
+
+    // MARK: Search
+
+    func testSearchTrimsTheTermAndSkipsEmptySearches() async throws {
+        let transport = ScriptedTransport()
+        transport.on("Items", json: itemsJSON([item("a", "\"Name\":\"Power On\",\"ChildCount\":3")]))
+        let library = api(transport)
+        let result = try await library.search(query: "  power on \n", limit: 7)
+        XCTAssertEqual(result.tracks.map(\.title), ["Power On"])
+        XCTAssertEqual(result.playlists.first?.trackCount, 3)
+        XCTAssertEqual(transport.requests.count, 4)
+        var kinds = Set<String>()
+        for index in 0..<4 {
+            XCTAssertEqual(transport.query(index)["searchTerm"], "power on")
+            XCTAssertEqual(transport.query(index)["limit"], "7")
+            XCTAssertEqual(transport.query(index)["recursive"], "true")
+            kinds.insert(transport.query(index)["includeItemTypes"] ?? "")
+        }
+        XCTAssertEqual(kinds, ["Audio", "MusicAlbum", "MusicArtist", "Playlist"])
+
+        let nothing = try await library.search(query: " \t ", limit: 7)
+        XCTAssertTrue(nothing.tracks.isEmpty && nothing.albums.isEmpty && nothing.artists.isEmpty && nothing.playlists.isEmpty)
+        XCTAssertEqual(transport.requests.count, 4, "a blank term is not sent")
+    }
 }
