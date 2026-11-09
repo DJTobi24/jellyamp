@@ -3,8 +3,6 @@ import JellyampCore
 
 struct SettingsView: View {
     @EnvironmentObject private var container: DependencyContainer
-    @State private var sonicServerURL = ""
-    @State private var sonicAPIKey = ""
 
     var body: some View {
         NavigationStack {
@@ -16,6 +14,7 @@ struct SettingsView: View {
                     }
                     Toggle("Loudness Leveling", isOn: $container.settings.loudnessLevelingEnabled)
                     Toggle("Silence Compression", isOn: $container.settings.silenceCompressionEnabled)
+                    Toggle("Autoplay", isOn: $container.settings.autoplayEnabled)
                     NavigationLink {
                         EqualizerView()
                     } label: {
@@ -24,36 +23,39 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    TextField("http://server:8095", text: $sonicServerURL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("API Key", text: $sonicAPIKey)
-                    LabeledContent("Status") {
-                        if container.sonicCapabilities.supports(.adventure) {
-                            Label("Connected", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        } else {
-                            Text("Jellyfin fallback")
-                                .foregroundStyle(.secondary)
-                        }
+                    NavigationLink {
+                        SonicSettingsView()
+                    } label: {
+                        LabeledContent("Sonic Server", value: container.isSonicServerActive ? "Connected" : "Jellyfin fallback")
+                    }
+                    NavigationLink {
+                        ScrobblingSettingsView()
+                    } label: {
+                        Label("Scrobbling", systemImage: "dot.radiowaves.left.and.right")
                     }
                 } header: {
-                    Text("Sonic Server")
-                } footer: {
-                    Text("Optional jellyamp-server for Sonic Adventure, Mixes for You and true sonic similarity. Without it, Jellyamp uses Jellyfin's built-in Instant Mix.")
+                    Text("Services")
                 }
 
                 Section("Account") {
-                    Button("Sign Out", role: .destructive) {
-                        container.signOut()
+                    NavigationLink {
+                        AccountSettingsView()
+                    } label: {
+                        AccountSettingsRow()
+                    }
+                }
+
+                Section {
+                    NavigationLink {
+                        AboutView()
+                    } label: {
+                        Label("About", systemImage: "info.circle")
                     }
                 }
             }
             .navigationTitle("Settings")
             .onDisappear {
                 container.saveSettings()
-                Task { await container.rewireSonicProvider() }
             }
         }
     }

@@ -40,6 +40,10 @@ final class KeychainCredentialStore {
         load(key: "sonicApiKey").map { String(decoding: $0, as: UTF8.self) }
     }
 
+    func clearSonicAPIKey() {
+        delete(key: "sonicApiKey")
+    }
+
     func clear() {
         delete(key: "session")
         delete(key: "sonicApiKey")

@@ -14,6 +14,9 @@ final class DependencyContainer: ObservableObject {
     /// Set to present the "Add to Playlist" sheet for a track (driven from the
     /// track ⋯ menu, which can't present a sheet itself).
     @Published var pendingPlaylistTrack: Track?
+    /// Set to present the Sonic Adventure builder starting from a track
+    /// (driven from the track ⋯ menu, like `pendingPlaylistTrack`).
+    @Published var pendingAdventureStart: Track?
 
     private(set) var library: MusicLibraryProviding?
     private(set) var sonic: SonicProviding?
@@ -33,7 +36,10 @@ final class DependencyContainer: ObservableObject {
     let scrobbling = ScrobbleService()
 
     /// Autoplay ("radio"): when the queue runs low, append similar tracks.
-    var autoplayEnabled = true
+    /// Follows the persisted setting.
+    var autoplayEnabled: Bool { settings.autoplayEnabled }
+    /// Endless stations (Home); while one plays it owns the queue refills.
+    let stations = StationCoordinator()
     private let radioFeeder = RadioQueueFeeder()
     private var playHistory: [String] = []
     private var isRefillingRadio = false
@@ -152,6 +158,7 @@ final class DependencyContainer: ObservableObject {
         scrobbling.signOut()
         settings.scrobbling = ScrobblingSettings()
         settingsStore.save(settings)
+        stations.stop()
     }
 
     private func activate(session: JellyfinSession) async {
@@ -192,10 +199,14 @@ final class DependencyContainer: ObservableObject {
     private func handleTrackChanged(to trackID: String) {
         playHistory.append(trackID)
         if playHistory.count > 200 { playHistory.removeFirst(playHistory.count - 200) }
+        stations.trackChanged(to: trackID, upNext: playerState.upNext)
         maybeRefillRadio()
     }
 
     private func maybeRefillRadio() {
+        // A running station refills from its own source, also when plain
+        // autoplay is switched off — starting a station asks for endless play.
+        if stations.refillIfNeeded(container: self) { return }
         guard autoplayEnabled, !isRefillingRadio,
               radioFeeder.needsRefill(remaining: playerState.upNext.count),
               let seed = playerState.currentTrack?.id,
@@ -228,6 +239,23 @@ final class DependencyContainer: ObservableObject {
             sonicCapabilities = fallback.capabilities
         }
     }
+
+    /// Saves the optional jellyamp-server configuration and re-wires the
+    /// provider. `url == nil` removes the server (and its key); a nil
+    /// `newAPIKey` keeps the key already in the Keychain.
+    func updateSonicServer(url: URL?, newAPIKey: String?) async {
+        settings.sonicServerURL = url
+        if url == nil {
+            credentialStore.clearSonicAPIKey()
+        } else if let newAPIKey, !newAPIKey.isEmpty {
+            credentialStore.saveSonicAPIKey(newAPIKey)
+        }
+        saveSettings()
+        await rewireSonicProvider()
+    }
+
+    /// The stored jellyamp-server key, for "Test connection" without retyping.
+    var storedSonicAPIKey: String? { credentialStore.loadSonicAPIKey() }
 
     func saveSettings() {
         settingsStore.save(settings)

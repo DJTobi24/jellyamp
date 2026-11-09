@@ -35,6 +35,10 @@ struct RootView: View {
             AddToPlaylistView(track: track)
                 .environmentObject(container)
         }
+        .sheet(item: $container.pendingAdventureStart) { track in
+            SonicAdventureSheet(start: track)
+                .environmentObject(container)
+        }
     }
 }
 
