@@ -54,6 +54,36 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     }
 }
 
+/// Answers `/Items?ids=a,b,c` with exactly those items (minus "missing"),
+/// in reverse — the server owes us no particular order.
+final class BatchEchoTransport: HTTPTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var sizes: [Int] = []
+    private var longest = 0
+
+    var batchSizes: [Int] {
+        lock.lock(); defer { lock.unlock() }
+        return sizes
+    }
+
+    var longestQuery: Int {
+        lock.lock(); defer { lock.unlock() }
+        return longest
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
+        let ids = (components.queryItems?.first { $0.name == "ids" }?.value ?? "").split(separator: ",").map(String.init)
+        lock.lock()
+        sizes.append(ids.count)
+        longest = max(longest, request.url!.query?.count ?? 0)
+        lock.unlock()
+        let items = ids.reversed().filter { $0 != "missing" }.map { item($0) }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        return (Data(itemsJSON(items).utf8), response)
+    }
+}
+
 let scriptedSession = JellyfinSession(
     serverURL: URL(string: "http://jellyfin.local:8096")!,
     deviceID: "device-1",

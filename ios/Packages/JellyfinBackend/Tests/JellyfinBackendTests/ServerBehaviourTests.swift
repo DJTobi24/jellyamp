@@ -104,4 +104,56 @@ final class ServerBehaviourTests: XCTestCase {
         XCTAssertEqual(query["recursive"], "true")
         XCTAssertEqual(query["sortBy"], "ParentIndexNumber,IndexNumber,SortName")
     }
+
+    // MARK: URL length
+
+    func testTracksByIDsAreFetchedInBatchesAndReassembledInOrder() async throws {
+        let ids = (0..<250).map { "id-\($0)" }
+        let transport = BatchEchoTransport()
+        let library = MusicLibraryAPI(session: scriptedSession, transport: transport)
+        // Reversed, with a duplicate and an unknown ID mixed in.
+        let requested = Array(ids.reversed()) + ["id-7", "missing"]
+        let tracks = try await library.tracks(byIDs: requested)
+        XCTAssertEqual(tracks.map(\.id), Array(ids.reversed()) + ["id-7"])
+        XCTAssertEqual(transport.batchSizes, [100, 100, 51], "250 distinct IDs + 1 unknown, 100 per request")
+        XCTAssertTrue(transport.longestQuery < 4_000, "\(transport.longestQuery) bytes of query")
+
+        let none = try await library.tracks(byIDs: [])
+        XCTAssertEqual(none, [])
+        XCTAssertEqual(transport.batchSizes.count, 3, "no request for no IDs")
+    }
+
+    func testCreatePlaylistSendsABodyNotAQuery() async throws {
+        let transport = ScriptedTransport()
+        transport.on("Playlists", json: "{\"Id\":\"new-playlist\"}")
+        let ids = (0..<500).map { "id-\($0)" }
+        let id = try await api(transport).createPlaylist(name: "Road Trip: A+B & C", itemIDs: ids)
+        XCTAssertEqual(id, "new-playlist")
+        let request = transport.requests[0]
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertNil(request.url?.query)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = transport.jsonBody()
+        XCTAssertEqual(body["Name"] as? String, "Road Trip: A+B & C")
+        XCTAssertEqual(body["Ids"] as? [String], ids)
+        XCTAssertEqual(body["UserId"] as? String, "user-1")
+        XCTAssertEqual(body["MediaType"] as? String, "Audio")
+    }
+
+    func testPlaylistAddAndRemoveAreBatched() async throws {
+        let transport = ScriptedTransport()
+        transport.on("Playlists", status: 204)
+        let library = api(transport)
+        let ids = (0..<230).map { "id-\($0)" }
+        try await library.addToPlaylist(playlistID: "p", itemIDs: ids)
+        try await library.removeFromPlaylist(playlistID: "p", entryIDs: ids)
+        try await library.addToPlaylist(playlistID: "p", itemIDs: [])
+        try await library.removeFromPlaylist(playlistID: "p", entryIDs: [])
+        XCTAssertEqual(transport.requests.map(\.httpMethod), ["POST", "POST", "POST", "DELETE", "DELETE", "DELETE"])
+        let added = (0..<3).flatMap { transport.query($0)["ids"]!.split(separator: ",").map(String.init) }
+        XCTAssertEqual(added, ids)
+        let removed = (3..<6).flatMap { transport.query($0)["entryIds"]!.split(separator: ",").map(String.init) }
+        XCTAssertEqual(removed, ids)
+        XCTAssertTrue(transport.requests.allSatisfy { ($0.url?.query?.count ?? 0) < 4_000 })
+    }
 }

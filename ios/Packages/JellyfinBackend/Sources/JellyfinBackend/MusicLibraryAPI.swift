@@ -177,42 +177,39 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     @discardableResult
     public func createPlaylist(name: String, itemIDs: [String]) async throws -> String {
         struct CreateResponse: Decodable { let Id: String }
-        let request = client.request(
-            path: "Playlists",
-            query: [
-                URLQueryItem(name: "name", value: name),
-                URLQueryItem(name: "userId", value: session.userID ?? ""),
-                URLQueryItem(name: "ids", value: itemIDs.joined(separator: ",")),
-                URLQueryItem(name: "mediaType", value: "Audio"),
-            ],
-            method: "POST"
-        )
+        // As a JSON body (`CreatePlaylistDto`), not as query parameters: a
+        // queue saved as a playlist easily has more IDs than fit in a URL.
+        var payload: [String: Any] = ["Name": name, "Ids": itemIDs, "MediaType": "Audio"]
+        if let userID = session.userID {
+            payload["UserId"] = userID
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let request = client.request(path: "Playlists", method: "POST", body: body)
         let response: CreateResponse = try await client.decode(from: request)
         return response.Id
     }
 
-    /// Appends tracks to an existing playlist.
+    /// Appends tracks to an existing playlist. Jellyfin 10.10 keeps a track
+    /// only once per playlist: IDs that are already in it are ignored.
     public func addToPlaylist(playlistID: String, itemIDs: [String]) async throws {
-        let request = client.request(
-            path: "Playlists/\(playlistID)/Items",
-            query: [
-                URLQueryItem(name: "ids", value: itemIDs.joined(separator: ",")),
-                URLQueryItem(name: "userId", value: session.userID ?? ""),
-            ],
-            method: "POST"
-        )
-        try await sendExpectingSuccess(request)
+        // This endpoint only takes the IDs in the query string.
+        for batch in JellyfinClient.batches(of: itemIDs) {
+            try await sendExpectingSuccess(client.request(
+                path: "Playlists/\(playlistID)/Items",
+                query: [URLQueryItem(name: "ids", value: batch.joined(separator: ","))] + client.userQuery,
+                method: "POST"
+            ))
+        }
     }
 
     public func removeFromPlaylist(playlistID: String, entryIDs: [String]) async throws {
-        try await sendExpectingSuccess(client.request(
-            path: "Playlists/\(playlistID)/Items",
-            query: [
-                URLQueryItem(name: "entryIds", value: entryIDs.joined(separator: ",")),
-                URLQueryItem(name: "userId", value: session.userID ?? ""),
-            ],
-            method: "DELETE"
-        ))
+        for batch in JellyfinClient.batches(of: entryIDs) {
+            try await sendExpectingSuccess(client.request(
+                path: "Playlists/\(playlistID)/Items",
+                query: [URLQueryItem(name: "entryIds", value: batch.joined(separator: ","))],
+                method: "DELETE"
+            ))
+        }
     }
 
     public func movePlaylistItem(playlistID: String, entryID: String, toIndex: Int) async throws {
@@ -390,12 +387,13 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     public func tracks(byIDs ids: [String]) async throws -> [Track] {
-        guard !ids.isEmpty else { return [] }
-        let response = try await items(query: [
-            URLQueryItem(name: "ids", value: ids.joined(separator: ",")),
-        ])
-        // Preserve requested order — Jellyfin returns library order.
-        let byID = Dictionary(uniqueKeysWithValues: response.map { ($0.Id, $0) })
+        // Each distinct ID once, in URL-length-safe batches (a few hundred
+        // comma-joined GUIDs are a 414), then back into the requested order:
+        // duplicates stay duplicates, unknown IDs drop out.
+        var seen = Set<String>()
+        let unique = ids.filter { seen.insert($0).inserted }
+        let response = try await client.items(ids: unique)
+        let byID = Dictionary(response.map { ($0.Id, $0) }, uniquingKeysWith: { first, _ in first })
         return ids.compactMap { byID[$0] }.map(DTOMapper.track(from:))
     }
 
