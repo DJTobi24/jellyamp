@@ -1,0 +1,33 @@
+Jellyamp ist ein Musikplayer für deinen eigenen Jellyfin-Server. Er spielt deine Sammlung so, wie Alben gedacht sind: ohne Lücken, in gleichmäßiger Lautstärke und mit deinen Covern im Mittelpunkt.
+
+Jellyamp ist kein Streamingdienst und bringt keine Musik mit. Du brauchst einen Jellyfin-Server mit einer Musikbibliothek, den dein iPhone oder iPad erreichen kann, zu Hause oder über das Internet.
+
+WIEDERGABE
+• Lückenlose Wiedergabe für Alben und Live-Aufnahmen
+• Überblenden zwischen Titeln, mit einstellbarer Dauer
+• Equalizer mit Voreinstellungen
+• Lautstärkeanpassung, damit leise und laute Titel gleich laut klingen
+• Spielt deine Dateien in Originalqualität; der Server wandelt nur um, was iOS nicht abspielen kann
+
+DEINE SAMMLUNG
+• Interpreten, Alben, Titel, Genres und Playlists durchstöbern
+• Zuletzt hinzugefügt, zuletzt gehört und Favoriten
+• Schnelle Suche in der ganzen Bibliothek
+• Synchronisierte Songtexte, die mit der Musik mitlaufen, wenn dein Server sie hat
+• Sofort-Mixe und Radio aus jedem Titel
+
+ÜBERALL
+• Alben und Playlists laden und offline hören
+• Steuerung im Sperrbildschirm und Kontrollzentrum, AirPlay
+• Sleep-Timer
+• Siri und Kurzbefehle: Musik per Sprache oder aus einer Automation starten
+• iPhone und iPad
+
+OPTIONAL
+• Scrobbeln zu Last.fm oder ListenBrainz
+• Der kostenlose, selbst gehostete jellyamp-server neben Jellyfin ergänzt klangliche Ähnlichkeit: Titel, die ähnlich klingen, und Mixe aus deiner eigenen Sammlung
+
+PRIVAT AUS PRINZIP
+Jellyamp erhebt keine Daten. Kein Konto, keine Werbung, kein Tracking. Die App spricht nur mit den Servern, die du selbst einrichtest.
+
+Jellyamp ist kostenlos und Open Source. Es ist ein unabhängiges Projekt und steht in keiner Verbindung zu Jellyfin.

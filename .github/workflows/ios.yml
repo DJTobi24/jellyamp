@@ -6,22 +6,54 @@ on:
     branches: ["claude/**"]
     paths:
       - "ios/**"
+      - "scripts/**"
+      - "docs/_config.yml"
+      - "docs/PRIVACY.md"
+      - "docs/SUPPORT.md"
+      - "LICENSE"
       - ".github/workflows/ios.yml"
   pull_request:
     branches: [main]
     paths:
       - "ios/**"
+      - "scripts/**"
+      - "docs/_config.yml"
+      - "docs/PRIVACY.md"
+      - "docs/SUPPORT.md"
+      - "LICENSE"
       - ".github/workflows/ios.yml"
 
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+# No dependency caching on purpose: the app has no remote Swift packages (the
+# three packages are local paths), so there is nothing to download, and a
+# restored DerivedData is a classic source of stale-module failures that
+# would cost more than the minute it saves.
+
 jobs:
+  release-config:
+    # Cheap Linux gate for everything App Store Connect would reject: listing
+    # text limits, icon format, privacy manifest, release-critical plist keys.
+    name: App Store metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check App Store metadata and release configuration
+        run: python3 scripts/check-appstore-metadata.py
+      - name: Check fastlane syntax
+        run: ruby -c ios/fastlane/Fastfile && ruby -c ios/fastlane/Appfile
+
   build:
+    name: Build and test (simulator)
     # macos-26 ships the iOS 26 SDK (Liquid Glass APIs); recent XcodeGen also
     # emits the Xcode 16+ project format that older runners cannot open.
     runs-on: macos-26
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
@@ -29,9 +61,79 @@ jobs:
       - name: Generate project
         working-directory: ios
         run: xcodegen generate
+      - name: Pick a simulator
+        id: simulator
+        # Resolved from what the runner image really has; device names change
+        # with every Xcode release.
+        run: echo "udid=$(python3 scripts/ci/pick-simulator.py)" >> "$GITHUB_OUTPUT"
       - name: Build
         working-directory: ios
         run: >-
-          xcodebuild -project Jellyamp.xcodeproj -scheme Jellyamp
-          -destination 'generic/platform=iOS Simulator'
-          CODE_SIGNING_ALLOWED=NO build
+          ../scripts/ci/xcodebuild.sh build
+          build-for-testing
+          -project Jellyamp.xcodeproj -scheme Jellyamp
+          -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
+          -derivedDataPath build/DerivedData
+      - name: Unit tests
+        working-directory: ios
+        run: >-
+          ../scripts/ci/xcodebuild.sh test
+          test-without-building
+          -project Jellyamp.xcodeproj -scheme Jellyamp
+          -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
+          -derivedDataPath build/DerivedData
+          -parallel-testing-enabled NO
+          -resultBundlePath build/JellyampTests.xcresult
+      - name: Upload raw xcodebuild logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-logs-simulator
+          path: ios/build/logs
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload test result bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: JellyampTests.xcresult
+          path: ios/build/JellyampTests.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
+
+  archive:
+    name: Archive (Release, unsigned)
+    # Proves on every push that the app archives for a real device in the
+    # Release configuration (optimizer on, asset catalog and privacy manifest
+    # compiled in) — the simulator Debug build above cannot show that.
+    # Unsigned, so it needs no secrets and also runs for pull requests.
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Archive
+        working-directory: ios
+        run: >-
+          ../scripts/ci/xcodebuild.sh archive
+          archive
+          -project Jellyamp.xcodeproj -scheme Jellyamp
+          -configuration Release
+          -destination 'generic/platform=iOS'
+          -archivePath build/Jellyamp.xcarchive
+          -derivedDataPath build/DerivedData
+          CODE_SIGNING_ALLOWED=NO
+      - name: Verify archive contents
+        run: scripts/ci/verify-archive.sh ios/build/Jellyamp.xcarchive
+      - name: Upload raw xcodebuild logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-logs-archive
+          path: ios/build/logs
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,8 @@
+# Must match PRODUCT_BUNDLE_IDENTIFIER in ios/project.yml.
+app_identifier("dev.djtobi.jellyamp")
+
+# No apple_id: every lane authenticates with an App Store Connect API key
+# (ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_CONTENT), never with an Apple ID and
+# password. The team ID comes from the environment or from the untracked
+# Config/Signing.xcconfig (see the Fastfile), so none is committed here.
+team_id(ENV["DEVELOPMENT_TEAM"]) unless ENV["DEVELOPMENT_TEAM"].to_s.empty?
