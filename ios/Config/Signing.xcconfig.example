@@ -1,0 +1,17 @@
+// Copy to Signing.xcconfig (gitignored) and fill in your own values:
+//
+//     cp Config/Signing.xcconfig.example Config/Signing.xcconfig
+//
+// Then re-run `xcodegen generate`. See docs/RELEASE.md, step 5.
+
+// Your 10-character Apple Developer Team ID
+// (developer.apple.com/account -> Membership details).
+DEVELOPMENT_TEAM = ABCDE12345
+
+// Optional: Last.fm application credentials for scrobbling
+// (last.fm/api/account/create). Leave empty to ship without Last.fm;
+// ListenBrainz needs no application key.
+// The values end up in Info.plist inside the shipped app, so treat the
+// "shared secret" as public — for a client app it always is.
+LASTFM_API_KEY =
+LASTFM_API_SECRET =
