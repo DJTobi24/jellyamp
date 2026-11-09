@@ -13,9 +13,10 @@ import SwiftUI
 /// playback, so it lets the app begin playing from the background instead of
 /// requiring it to come to the foreground.
 ///
-/// Kept as one alias so a different protocol can be swapped in at a single
-/// place should an SDK ever disagree about its availability.
-typealias JellyampAudioIntent = AudioPlaybackIntent
+/// `AudioPlaybackIntent` only exists from iOS 17; its predecessor covers the
+/// iOS 16 deployment target and still works on newer systems (deprecation
+/// warning only). Kept as one alias so it can be swapped in a single place.
+typealias JellyampAudioIntent = AudioStartingIntent
 
 // MARK: - Play
 
