@@ -119,7 +119,7 @@ final class SystemIntegration {
 /// Constants of the "continue album" activity. The type must also be listed
 /// under `NSUserActivityTypes` in Info.plist (see `ios/project.yml`).
 enum ListeningActivity {
-    static let playAlbumType = "dev.djtobi.Jellyamp.playAlbum"
+    static let playAlbumType = "dev.djtobi.jellyamp.playAlbum"
     static let albumIDKey = "albumID"
     static let albumNameKey = "albumName"
 }

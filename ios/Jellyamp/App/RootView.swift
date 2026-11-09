@@ -30,6 +30,7 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
         .tint(.white)
+        .continuesListeningActivities()
         .tabBarMinimizesOnScroll()
         .sheet(item: $container.pendingPlaylistTrack) { track in
             AddToPlaylistView(track: track)
