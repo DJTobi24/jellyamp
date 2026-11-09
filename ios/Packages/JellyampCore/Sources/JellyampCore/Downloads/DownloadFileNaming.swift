@@ -42,6 +42,17 @@ public enum DownloadFileNaming {
         "\(track.id).\(track.container ?? "mp3")"
     }
 
+    /// Where a paused / failed transfer's URLSession resume data is kept.
+    public static func fileName(forResumeDataOf trackID: String) -> String {
+        "\(safeID(trackID)).resume"
+    }
+
+    /// Stored cover of an album / artist / playlist. The image format is
+    /// whatever the server sent; decoders sniff it, so no real extension.
+    public static func artworkFileName(forItemID itemID: String) -> String {
+        "\(safeID(itemID)).img"
+    }
+
     /// Short alphanumeric extensions only, so a server-supplied value can never
     /// smuggle a path separator into a file name.
     static func isSafeExtension(_ value: String) -> Bool {

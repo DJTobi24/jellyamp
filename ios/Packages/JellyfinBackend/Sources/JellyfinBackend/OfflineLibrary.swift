@@ -63,6 +63,7 @@ public final class OfflineLibrary: MusicLibraryProviding, @unchecked Sendable {
     }
 
     /// True for "could not talk to the server at all" errors.
+    @Sendable
     public static func isConnectivityError(_ error: Error) -> Bool {
         if error is HTTPTransportError { return true }
         let nsError = error as NSError

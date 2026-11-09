@@ -104,10 +104,11 @@ public enum ImageURLBuilder {
         return components.url!
     }
 
-    /// Cover to store next to downloads. Fixed width and no `tag`, so one file
+    /// Cover to store next to downloads. Fixed width (enough for the full-screen
+    /// player at 3x) and no `tag`, so one file
     /// per item serves every size the UI asks for; images need no auth.
     public static func offlineArtworkURL(itemID: String, session: JellyfinSession) -> URL {
-        url(itemID: itemID, tag: nil, maxWidth: 600, session: session)
+        url(itemID: itemID, tag: nil, maxWidth: 1000, session: session)
     }
 
     /// Best image URL for a track: its own primary image, else its album's.

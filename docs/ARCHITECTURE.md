@@ -71,6 +71,29 @@ GRDB/SQLite in the app shell (see ADR-0003): `artists`, `albums`, `tracks`,
 `SettingsStoring`) live in JellyampCore with in-memory fakes for tests.
 Credentials and tokens live in the Keychain.
 
+## Downloads & offline
+
+Offline content is described by one JSON document, the `DownloadIndex`
+(JellyampCore, schema-versioned, `Application Support/Downloads/index.json`,
+excluded from backup): the downloaded tracks with their queue state, and the
+**pins** that keep them — album, playlist, artist, single track, or the smart
+sync pin. A track stays on disk for as long as one pin references it.
+
+- **Decisions are pure Core code**: queue transitions and retry backoff
+  (`DownloadQueue.swift`), relaunch reconciliation, file naming, storage math,
+  `SmartSyncPlanner`, and `OfflineCatalog`, which rebuilds albums / artists /
+  genres / playlists / search from the index.
+- **The app shell adapts**: `BackgroundDownloadSession` wraps a background
+  `URLSession` (originals from `/Items/{id}/Download`), `DownloadManager`
+  persists the index and executes its decisions, `OfflineCoordinator` runs
+  smart sync and playlist re-sync.
+- **`OfflineLibrary`** (JellyfinBackend) is the decorator around
+  `MusicLibraryProviding`. `OfflineStateTracker` decides per request: offline
+  mode on or no network path → serve the catalog; a request failing for
+  connectivity reasons → serve the catalog and stop asking the server until a
+  periodic probe succeeds. Mutations throw `OfflineLibraryError` while offline
+  (no operation queue).
+
 ## The hybrid seam (companion backend optional)
 
 `docs/SONIC-API.md` is the contract. Both sides are tested against the same

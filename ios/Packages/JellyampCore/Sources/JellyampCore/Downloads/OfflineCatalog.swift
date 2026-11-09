@@ -363,7 +363,8 @@ public struct OfflineCatalog: Equatable, Sendable {
 
     // MARK: Ordering helpers
 
-    static func albumOrder(_ tracks: [Track]) -> [Track] {
+    /// Disc, then track number, then title.
+    public static func albumOrder(_ tracks: [Track]) -> [Track] {
         tracks.sorted(by: precedesInAlbum)
     }
 

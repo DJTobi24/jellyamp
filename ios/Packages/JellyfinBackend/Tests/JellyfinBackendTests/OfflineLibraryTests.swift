@@ -21,7 +21,7 @@ final class DownloadURLTests: XCTestCase {
     func testOfflineArtworkURLIsTagless() {
         let url = ImageURLBuilder.offlineArtworkURL(itemID: "album1", session: session)
         XCTAssertEqual(url.path, "/base/Items/album1/Images/Primary")
-        XCTAssertEqual(url.query, "fillWidth=600&quality=90")
+        XCTAssertEqual(url.query, "fillWidth=1000&quality=90")
     }
 }
 
