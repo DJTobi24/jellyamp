@@ -40,9 +40,10 @@ public protocol MusicLibraryProviding: Sendable {
     func setFavorite(itemID: String, isFavorite: Bool) async throws
 }
 
-/// Fields we must request explicitly — Jellyfin omits media-source and genre
-/// data from list responses by default.
-let defaultFields = "MediaSources,Genres,DateCreated,ParentId,Overview"
+/// Fields we must request explicitly — Jellyfin omits media-source, genre and
+/// child-count data from list responses by default (albums and playlists come
+/// back without `ChildCount`, i.e. without a track count, otherwise).
+let defaultFields = "MediaSources,Genres,DateCreated,ParentId,Overview,ChildCount"
 
 public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     private let session: JellyfinSession
@@ -85,13 +86,12 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     public func artists(sortBy: String = "SortName", startIndex: Int = 0, limit: Int = 100) async throws -> [Artist] {
-        let request = client.request(path: "Artists/AlbumArtists", query: [
+        // Through `items` for `fields=`: without it the artists carry no genres.
+        let response = try await items(path: "Artists/AlbumArtists", query: [
             URLQueryItem(name: "sortBy", value: sortBy),
             URLQueryItem(name: "startIndex", value: String(startIndex)),
             URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
         ])
-        let response = try await execute(request).Items
         return response.map(DTOMapper.artist(from:))
     }
 
@@ -143,9 +143,8 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     /// Similar artists via Jellyfin's metadata similarity (`/Items/{id}/Similar`).
     public func similarArtists(artistID: String, limit: Int = 12) async throws -> [Artist] {
         let request = client.request(path: "Items/\(artistID)/Similar", query: [
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
             URLQueryItem(name: "limit", value: String(limit)),
-        ])
+        ] + client.userQuery)
         let response = try await execute(request).Items
         return response.map(DTOMapper.artist(from:))
     }
@@ -255,12 +254,11 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
 
     /// The user's followed ("favorited") album-artists.
     public func favoriteArtists(limit: Int = 500) async throws -> [Artist] {
-        let request = client.request(path: "Artists/AlbumArtists", query: [
+        let response = try await items(path: "Artists/AlbumArtists", query: [
             URLQueryItem(name: "isFavorite", value: "true"),
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
+            URLQueryItem(name: "sortBy", value: "SortName"),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
-        let response = try await execute(request).Items
         return response.map(DTOMapper.artist(from:))
     }
 
@@ -296,9 +294,8 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         // `/MusicGenres` is the music-specific endpoint; the generic `/Genres`
         // with includeItemTypes=Audio returns nothing on Jellyfin.
         let request = client.request(path: "MusicGenres", query: [
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
             URLQueryItem(name: "sortBy", value: "SortName"),
-        ])
+        ] + client.userQuery)
         let response = try await execute(request).Items
         return response.map { Genre(id: $0.Id, name: $0.Name ?? "") }
     }
@@ -320,11 +317,7 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     public func tracks(inPlaylist playlistID: String) async throws -> [Track] {
-        let request = client.request(path: "Playlists/\(playlistID)/Items", query: [
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
-            URLQueryItem(name: "fields", value: defaultFields),
-        ])
-        let response = try await execute(request).Items
+        let response = try await items(path: "Playlists/\(playlistID)/Items", query: [])
         return response.map { dto in
             var track = DTOMapper.track(from: dto)
             track.playlistEntryID = dto.PlaylistItemId
@@ -336,8 +329,9 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
         let request = client.request(path: "Items/Latest", query: [
             URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
             URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
-        ])
+            // Like `/Items`, it leaves genres out unless asked.
+            URLQueryItem(name: "fields", value: defaultFields),
+        ] + client.userQuery)
         // /Items/Latest returns a bare array, not an ItemsResponse envelope.
         let dtos: LossyArray<BaseItemDto> = try await client.decode(from: request)
         return dtos.elements.map(DTOMapper.album(from:))
@@ -405,8 +399,8 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
 
     // MARK: - Plumbing
 
-    private func items(query: [URLQueryItem]) async throws -> [BaseItemDto] {
-        try await client.items(query: query)
+    private func items(path: String = "Items", query: [URLQueryItem]) async throws -> [BaseItemDto] {
+        try await client.items(path: path, query: query)
     }
 
     private func execute(_ request: URLRequest) async throws -> ItemsResponse {
