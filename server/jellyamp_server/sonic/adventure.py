@@ -5,45 +5,54 @@ unused track for each waypoint, deduplicating artists inside a sliding window
 so the path doesn't collapse onto one artist's catalogue.
 """
 
+import numpy as np
 
-from jellyamp_server.sonic.similarity import cosine_distance
+from jellyamp_server.sonic.index import LibraryIndex
+from jellyamp_server.sonic.similarity import Library
 from jellyamp_server.store import TrackRecord
 
 ARTIST_DEDUPE_WINDOW = 3
+# How much farther from the waypoint (cosine distance) a track by a fresh
+# artist may be before a repeated artist is preferred after all.
+ARTIST_DEDUPE_SLACK = 0.1
 
 
 def adventure_path(
     start: TrackRecord,
     end: TrackRecord,
-    candidates: list[TrackRecord],
+    candidates: Library,
     steps: int,
 ) -> list[tuple[str, int, float]]:
     """Returns (item_id, position, distance-to-waypoint); endpoints included."""
     if steps < 1:
         return [(start.item_id, 0, 0.0), (end.item_id, 1, 0.0)]
 
-    used_ids = {start.item_id, end.item_id}
+    index = LibraryIndex.wrap(candidates)
+    used = index.mask([start.item_id, end.item_id])
+    artists = np.array([track.artist_id or "" for track in index.records], dtype=object)
     recent_artists: list[str | None] = [start.artist_id]
     path: list[tuple[str, int, float]] = [(start.item_id, 0, 0.0)]
 
     for step in range(1, steps + 1):
         t = step / (steps + 1)
         waypoint = (1.0 - t) * start.embedding + t * end.embedding
-        best: tuple[str, float, TrackRecord] | None = None
-        for track in candidates:
-            if track.item_id in used_ids:
-                continue
-            if track.artist_id and track.artist_id in recent_artists[-ARTIST_DEDUPE_WINDOW:]:
-                continue
-            distance = cosine_distance(waypoint, track.embedding)
-            if best is None or distance < best[1]:
-                best = (track.item_id, distance, track)
-        if best is None:
+        blocked = used.copy()
+        for artist in recent_artists[-ARTIST_DEDUPE_WINDOW:]:
+            if artist:
+                blocked |= artists == artist
+        best = index.nearest(waypoint, 1, blocked)
+        closest = index.nearest(waypoint, 1, used)
+        # Variety must not derail the journey: in a library with few artists
+        # the only "fresh" artist may be sonically far off the path.
+        if closest and (not best or best[0][1] > closest[0][1] + ARTIST_DEDUPE_SLACK):
+            best = closest
+        if not best:
             continue
-        used_ids.add(best[0])
-        recent_artists.append(best[2].artist_id)
-        path.append((best[0], step, best[1]))
+        track, distance = best[0]
+        used[index.row(track.item_id)] = True
+        recent_artists.append(track.artist_id)
+        path.append((track.item_id, step, distance))
 
     path.append((end.item_id, len(path), 0.0))
     # Re-number positions densely (skipped waypoints must not leave holes).
-    return [(item_id, index, distance) for index, (item_id, _, distance) in enumerate(path)]
+    return [(item_id, position, distance) for position, (item_id, _, distance) in enumerate(path)]

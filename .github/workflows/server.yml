@@ -22,16 +22,62 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install ffmpeg (DSP analysis backend and its tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install
         run: pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
       - name: Test
-        run: pytest -q
+        # -rs lists skipped tests: the DSP tests must not silently skip here.
+        run: pytest -q -rs
+      - name: DSP tests really ran
+        run: test "$(pytest -q tests/test_dsp.py | tail -1 | grep -c skipped)" = "0"
+
+  fixtures-in-sync:
+    # core-linux.yml runs the same check, but only when ios/ or scripts/
+    # change; a fixture edited on the server side must be caught here.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sonic API fixtures must match between server and iOS client
+        run: bash scripts/sync-fixtures.sh --check
 
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build image (slim, no analysis extra)
-        run: docker build server
+      - name: Build image (slim, DSP backend)
+        run: docker build -t jellyamp-server:ci server
+      - name: Image refuses to start unconfigured, with a readable error
+        run: |
+          set +e
+          output=$(docker run --rm jellyamp-server:ci 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          test "$status" = "78"
+          echo "$output" | grep -q "SONIC_API_KEY is not set"
+      - name: Image starts, is healthy, runs as non-root, has a working analyzer
+        run: |
+          docker run -d --name sonic \
+            -e JELLYFIN_URL=http://127.0.0.1:1 \
+            -e JELLYFIN_API_KEY=ci-jellyfin-key \
+            -e SONIC_API_KEY=ci-sonic-key-0123456789 \
+            -e ANALYSIS_BACKEND=dsp \
+            jellyamp-server:ci
+          for i in $(seq 1 30); do
+            if docker exec sonic python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/healthz')"; then break; fi
+            sleep 1
+          done
+          docker exec sonic python -c "
+          import json, urllib.request
+          request = urllib.request.Request('http://127.0.0.1:8095/api/v1/info', headers={'X-Api-Key': 'ci-sonic-key-0123456789'})
+          info = json.load(urllib.request.urlopen(request))
+          print(info)
+          assert info['analysis'] == {'backend': 'dsp', 'version': '1'}, info
+          "
+          test "$(docker exec sonic id -u)" != "0"
+          docker exec sonic ffmpeg -version | head -1
+          docker logs sonic
+          docker rm -f sonic
