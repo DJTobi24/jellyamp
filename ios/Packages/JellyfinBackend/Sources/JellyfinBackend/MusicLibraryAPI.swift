@@ -114,11 +114,12 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     /// Albums the artist appears on without being the album artist (guest spots,
-    /// compilations). `contributingArtistIds` minus the artist's own albums.
+    /// compilations). That is exactly what `contributingArtistIds` means on the
+    /// server. Do not combine it with `excludeArtistIds` for the same artist:
+    /// that excludes every album the artist has a track on, i.e. everything.
     public func appearsOnAlbums(artistID: String) async throws -> [Album] {
         let response = try await items(query: [
             URLQueryItem(name: "contributingArtistIds", value: artistID),
-            URLQueryItem(name: "excludeArtistIds", value: artistID),
             URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
             URLQueryItem(name: "recursive", value: "true"),
             URLQueryItem(name: "sortBy", value: "ProductionYear,SortName"),

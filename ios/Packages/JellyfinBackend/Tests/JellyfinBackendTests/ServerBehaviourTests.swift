@@ -40,4 +40,19 @@ final class ServerBehaviourTests: XCTestCase {
             XCTAssertEqual(transport.query(index)["userId"], "user-1")
         }
     }
+
+    // MARK: Appears on
+
+    func testAppearsOnAsksForContributionsOnly() async throws {
+        let transport = ScriptedTransport()
+        transport.on("Items", json: itemsJSON([item("sampler", "\"Name\":\"Sampler\"")]))
+        let albums = try await api(transport).appearsOnAlbums(artistID: "artist-1")
+        XCTAssertEqual(albums.map(\.id), ["sampler"])
+        let query = transport.query()
+        XCTAssertEqual(query["contributingArtistIds"], "artist-1")
+        // Real server: with excludeArtistIds=<same artist> the answer is always empty.
+        XCTAssertNil(query["excludeArtistIds"])
+        XCTAssertEqual(query["includeItemTypes"], "MusicAlbum")
+        XCTAssertEqual(query["recursive"], "true")
+    }
 }
