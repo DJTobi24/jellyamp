@@ -42,6 +42,32 @@ final class DependencyContainer: ObservableObject {
 
     var isSignedIn: Bool { session?.isAuthenticated ?? false }
 
+    /// The one container of the process. Siri / Shortcuts intents and the
+    /// CarPlay scene run without the SwiftUI window (the app may be launched
+    /// in the background just for them), so they cannot get the container
+    /// from the environment and reach it here instead.
+    static let shared = DependencyContainer()
+    private var bootstrapTask: Task<Void, Never>?
+    /// True once `bootstrap()` has finished (signed in or not).
+    private(set) var isBootstrapped = false
+
+    /// Runs `bootstrap()` exactly once, whoever asks first — the window, an
+    /// intent or CarPlay — and lets every other caller wait for that run.
+    /// Calling `bootstrap()` twice would build a second audio engine.
+    func ensureBootstrapped() async {
+        if let bootstrapTask {
+            await bootstrapTask.value
+            return
+        }
+        let task = Task {
+            await self.bootstrap()
+            self.isBootstrapped = true
+            SystemIntegration.shared.attach(to: self)
+        }
+        bootstrapTask = task
+        await task.value
+    }
+
     func bootstrap() async {
         settings = settingsStore.loadSettings()
         if let stored = credentialStore.loadSession() {

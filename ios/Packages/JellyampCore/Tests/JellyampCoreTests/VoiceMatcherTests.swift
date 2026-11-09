@@ -55,6 +55,22 @@ final class VoiceTextNormalizerTests: XCTestCase {
     }
 }
 
+final class VoiceEntityIdentifierTests: XCTestCase {
+    func testRoundTripKeepsColonsInName() {
+        let identifier = VoiceEntityIdentifier(kind: .album, itemID: "0af1", name: "Symphony No. 5: Allegro")
+        XCTAssertEqual(identifier.rawValue, "album:0af1:Symphony No. 5: Allegro")
+        XCTAssertEqual(VoiceEntityIdentifier(rawValue: identifier.rawValue), identifier)
+        XCTAssertEqual(VoiceEntityIdentifier(rawValue: "genre:g1:")?.name, "")
+    }
+
+    func testRejectsMalformedIdentifiers() {
+        XCTAssertNil(VoiceEntityIdentifier(rawValue: ""))
+        XCTAssertNil(VoiceEntityIdentifier(rawValue: "album:0af1"))
+        XCTAssertNil(VoiceEntityIdentifier(rawValue: "podcast:0af1:Name"))
+        XCTAssertNil(VoiceEntityIdentifier(rawValue: "album::Name"))
+    }
+}
+
 final class VoiceQueryParserTests: XCTestCase {
     func testStripsCommandAndFiller() {
         XCTAssertEqual(VoiceQueryParser.parse("Play some Miles Davis").text, "Miles Davis")

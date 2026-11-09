@@ -24,6 +24,38 @@ public enum VoiceEntityKind: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// Self-describing identifier for a library item handed to the system
+/// (Shortcuts, Siri suggestions): `kind:itemID:name`.
+///
+/// The name travels inside the identifier so a saved shortcut can be shown
+/// and resolved without a server round-trip — the system re-resolves stored
+/// identifiers while the phone may be offline or the app not signed in yet.
+public struct VoiceEntityIdentifier: Equatable, Hashable, Sendable {
+    public var kind: VoiceEntityKind
+    public var itemID: String
+    public var name: String
+
+    public init(kind: VoiceEntityKind, itemID: String, name: String) {
+        self.kind = kind
+        self.itemID = itemID
+        self.name = name
+    }
+
+    public init?(rawValue: String) {
+        // Jellyfin ids are hex GUIDs, so the first two colons are ours; any
+        // further ones belong to the name ("Symphony No. 5: Allegro").
+        let parts = rawValue.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count == 3, let kind = VoiceEntityKind(rawValue: String(parts[0])), !parts[1].isEmpty else {
+            return nil
+        }
+        self.kind = kind
+        self.itemID = String(parts[1])
+        self.name = String(parts[2])
+    }
+
+    public var rawValue: String { "\(kind.rawValue):\(itemID):\(name)" }
+}
+
 /// A spoken request after the command words are peeled off.
 public struct VoiceQuery: Equatable, Sendable {
     /// The full request minus filler ("play", "some", "the album").

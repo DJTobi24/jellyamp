@@ -1,4 +1,10 @@
 name: Jellyamp
+# CarPlay switch (default off): `CARPLAY_ENABLED=YES xcodegen generate` merges
+# the CarPlay scene manifest + entitlement from project.carplay.yml. Unset,
+# the placeholder stays literal and reads as false. See docs/CARPLAY.md.
+include:
+  - path: project.carplay.yml
+    enable: ${CARPLAY_ENABLED}
 options:
   bundleIdPrefix: dev.djtobi
   deploymentTarget:
@@ -41,6 +47,10 @@ targets:
           - UIInterfaceOrientationPortrait
         UIBackgroundModes:
           - audio
+        # "Continue this album" in Spotlight / Siri Suggestions
+        # (Services/Intents/SystemIntegration.swift).
+        NSUserActivityTypes:
+          - dev.djtobi.Jellyamp.playAlbum
         NSAppTransportSecurity:
           # Many self-hosted Jellyfin servers run plain HTTP on the LAN.
           NSAllowsLocalNetworking: true

@@ -1,0 +1,31 @@
+# CarPlay switch — merged into project.yml only when the project is generated
+# with CARPLAY_ENABLED=YES:
+#
+#     cd ios && CARPLAY_ENABLED=YES xcodegen generate
+#
+# It adds the two things that make the (always compiled) CarPlay code live:
+# the CarPlay scene in the Info.plist scene manifest and the CarPlay audio
+# entitlement. Both must go together, and neither may be in a build signed
+# with a provisioning profile that lacks the entitlement — that is why the
+# default (`xcodegen generate`) leaves them out. See docs/CARPLAY.md.
+targets:
+  Jellyamp:
+    info:
+      properties:
+        UIApplicationSceneManifest:
+          # Required for the CarPlay scene to exist next to the phone's
+          # window scene.
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            # Only the CarPlay role is declared. The phone window scene is
+            # deliberately absent: SwiftUI's WindowGroup provides its own
+            # configuration, and a UIWindowSceneSessionRoleApplication entry
+            # here (with a delegate class or storyboard) would take the
+            # window away from SwiftUI.
+            CPTemplateApplicationSceneSessionRoleApplication:
+              - UISceneConfigurationName: CarPlay
+                UISceneClassName: CPTemplateApplicationScene
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).CarPlaySceneDelegate
+    entitlements:
+      properties:
+        com.apple.developer.carplay-audio: true
