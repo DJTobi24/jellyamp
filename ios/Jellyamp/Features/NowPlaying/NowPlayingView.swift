@@ -4,67 +4,34 @@ import MediaPlayer
 import JellyampCore
 
 /// Plexamp signature look: huge artwork over a blurred-art background, with
-/// scrubber, transport controls and AirPlay. Queue sheet, lyrics, and
-/// visualizer attach here in later phases.
+/// scrubber, transport controls and AirPlay. Tapping the artwork cycles the
+/// visualizer (off → bars → wave), which is remembered in settings.
+///
+/// Layout adapts to the space it gets: a single column in portrait, artwork
+/// left / controls right when the view is wider than tall (landscape, iPad).
 struct NowPlayingView: View {
     @EnvironmentObject private var container: DependencyContainer
     @ObservedObject var playerState: PlayerStateModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showQueue = false
     @State private var showLyrics = false
-    @State private var isFavorite = false
+    @State private var albumDestination: Album?
+    @State private var artistDestination: Artist?
+    @State private var visualizerTint: Color = .white
 
     var body: some View {
-        ZStack {
-            BlurredArtBackground(track: playerState.currentTrack)
-            VStack(spacing: 22) {
-                header
-                Spacer(minLength: 8)
-                if let track = playerState.currentTrack {
-                    ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 300)
-                        .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
-                    trackInfo(track)
-                        .task(id: track.id) { isFavorite = track.isFavorite }
+        GeometryReader { geometry in
+            let isWide = geometry.size.width > geometry.size.height && geometry.size.width >= 560
+            ZStack {
+                BlurredArtBackground(track: playerState.currentTrack)
+                if isWide {
+                    wideLayout(size: geometry.size)
+                } else {
+                    compactLayout(size: geometry.size)
                 }
-                if let errorMessage = playerState.errorMessage {
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                ProgressSection(playerState: playerState)
-                PlayerControlsView(playerState: playerState)
-                HStack(spacing: 12) {
-                    Image(systemName: "speaker.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    // System/output volume — also controls the AirPlay device.
-                    SystemVolumeSlider()
-                        .frame(height: 28)
-                    Image(systemName: "speaker.wave.3.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal)
-                HStack(spacing: 40) {
-                    AirPlayRoutePicker()
-                        .frame(width: 44, height: 44)
-                    Button {
-                        showLyrics = true
-                    } label: {
-                        Image(systemName: "quote.bubble")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(playerState.currentTrack == nil)
-                }
-                Spacer(minLength: 8)
             }
-            .padding()
         }
         .sheet(isPresented: $showQueue) {
             QueueView(playerState: playerState)
@@ -76,46 +43,357 @@ struct NowPlayingView: View {
                     .environmentObject(container)
             }
         }
+        .sheet(item: $albumDestination) { album in
+            destinationSheet { AlbumDetailView(album: album) }
+        }
+        .sheet(item: $artistDestination) { artist in
+            destinationSheet { ArtistDetailView(artist: artist) }
+        }
+        .task(id: playerState.currentTrack.map { "\($0.albumID ?? $0.id)|\($0.imageTag ?? "")" } ?? "") {
+            await updateVisualizerTint()
+        }
     }
 
-    private func trackInfo(_ track: Track) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(track.title)
-                    .font(.title2.bold())
-                    .lineLimit(1)
-                Text(track.artistName)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-            Button {
-                isFavorite.toggle()
-                let target = isFavorite
-                Task { try? await container.library?.setFavorite(itemID: track.id, isFavorite: target) }
-            } label: {
-                Image(systemName: isFavorite ? "heart.fill" : "heart")
-                    .font(.title2)
-                    .foregroundStyle(isFavorite ? .pink : .secondary)
-            }
-            .buttonStyle(.plain)
+    // MARK: - Layouts
+
+    /// Portrait: one column. If it does not fit (small phone, large Dynamic
+    /// Type) the same column scrolls instead of clipping.
+    private func compactLayout(size: CGSize) -> some View {
+        let side = (min(size.width - 56, size.height * 0.40, 460)).rounded(.down)
+        let column = VStack(spacing: 14) {
+            header
+            artwork(side: max(side, 120))
+                .padding(.vertical, 4)
+            trackInfo
+            errorBanner
+            ScrubberView(playerState: playerState)
+            PlayerControlsView(playerState: playerState)
+            volumeRow
+            bottomBar
         }
         .padding(.horizontal)
+        .padding(.vertical, 8)
+        .frame(maxWidth: horizontalSizeClass == .regular ? 560 : .infinity)
+        .frame(maxWidth: .infinity)
+
+        return ViewThatFits(in: .vertical) {
+            column
+            ScrollView(showsIndicators: false) { column }
+        }
+    }
+
+    /// Landscape / iPad: artwork on the left, everything else on the right.
+    private func wideLayout(size: CGSize) -> some View {
+        let side = (min(size.height - 96, size.width * 0.42, 520)).rounded(.down)
+        let controls = VStack(spacing: 12) {
+            trackInfo
+            errorBanner
+            ScrubberView(playerState: playerState)
+            PlayerControlsView(playerState: playerState)
+            volumeRow
+            bottomBar
+        }
+        .frame(maxWidth: 520)
+
+        return VStack(spacing: 8) {
+            header
+            HStack(alignment: .center, spacing: 32) {
+                artwork(side: max(side, 120))
+                ViewThatFits(in: .vertical) {
+                    controls
+                    ScrollView(showsIndicators: false) { controls }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Pieces
+
+    private var visualizerStyle: VisualizerStyle { container.settings.visualizerStyle }
+
+    /// Artwork, with the visualizer drawn over a dimmed cover when enabled.
+    @ViewBuilder
+    private func artwork(side: CGFloat) -> some View {
+        if let track = playerState.currentTrack {
+            Button {
+                cycleVisualizer()
+            } label: {
+                ZStack {
+                    ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: side)
+                        .overlay {
+                            if visualizerStyle != .off {
+                                RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.55))
+                            }
+                        }
+                    if visualizerStyle != .off {
+                        VisualizerView(style: visualizerStyle, tint: visualizerTint, isPlaying: playerState.isPlaying)
+                            .padding(side * 0.08)
+                            .frame(width: side, height: side)
+                    }
+                }
+                .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Album artwork")
+            .accessibilityValue(visualizerDescription)
+            .accessibilityHint("Changes the visualizer")
+        } else {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.quaternary)
+                .frame(width: side, height: side)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var visualizerDescription: String {
+        switch visualizerStyle {
+        case .off: return String(localized: "Visualizer off")
+        case .bars: return String(localized: "Visualizer: bars")
+        case .wave: return String(localized: "Visualizer: wave")
+        }
+    }
+
+    private func cycleVisualizer() {
+        let next: VisualizerStyle
+        switch visualizerStyle {
+        case .off: next = .bars
+        case .bars: next = .wave
+        case .wave: next = .off
+        }
+        Haptics.selection()
+        if reduceMotion {
+            container.settings.visualizerStyle = next
+        } else {
+            withAnimation(.easeInOut(duration: 0.2)) { container.settings.visualizerStyle = next }
+        }
+        container.saveSettings()
+    }
+
+    private func updateVisualizerTint() async {
+        guard let track = playerState.currentTrack, let session = container.session else {
+            visualizerTint = .white
+            return
+        }
+        if let color = await ArtworkPalette.shared.tint(for: track, session: session) {
+            visualizerTint = Color(color)
+        } else {
+            visualizerTint = .white
+        }
+    }
+
+    @ViewBuilder
+    private var trackInfo: some View {
+        if let track = playerState.currentTrack {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(track.title)
+                        .font(.title2.bold())
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                    Text(track.artistName)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if let quality = playerState.quality {
+                        AudioQualityBadge(info: quality)
+                            .padding(.top, 2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+
+                Button {
+                    toggleFavorite(track)
+                } label: {
+                    Image(systemName: track.isFavorite ? "heart.fill" : "heart")
+                        .font(.title2)
+                        .foregroundStyle(track.isFavorite ? Color.pink : Color.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Favorite")
+                .accessibilityValue(track.isFavorite ? "On" : "Off")
+
+                trackMenu(track)
+            }
+            .padding(.horizontal)
+        }
+    }
+
+    /// Optimistic toggle: the engine mirrors the new state into the queue
+    /// (so the lock screen and every queued copy agree) and it is rolled
+    /// back if the server refuses.
+    private func toggleFavorite(_ track: Track) {
+        let target = !track.isFavorite
+        Haptics.toggle()
+        container.player?.setFavorite(trackID: track.id, isFavorite: target)
+        Task {
+            do {
+                try await container.library?.setFavorite(itemID: track.id, isFavorite: target)
+            } catch {
+                container.player?.setFavorite(trackID: track.id, isFavorite: !target)
+            }
+        }
+    }
+
+    private func trackMenu(_ track: Track) -> some View {
+        Menu {
+            if track.albumID != nil {
+                Button {
+                    Task { await openAlbum(of: track) }
+                } label: { Label("Go to Album", systemImage: "square.stack") }
+            }
+            if track.artistID != nil {
+                Button {
+                    Task { await openArtist(of: track) }
+                } label: { Label("Go to Artist", systemImage: "music.mic") }
+            }
+            Button {
+                // The playlist sheet belongs to the root view, which cannot
+                // present while this cover is up — close first.
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    container.pendingPlaylistTrack = track
+                }
+            } label: { Label("Add to Playlist…", systemImage: "text.badge.plus") }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("More")
+    }
+
+    private func openAlbum(of track: Track) async {
+        guard let albumID = track.albumID else { return }
+        // The full album (year, favorite state) when reachable; otherwise
+        // what the track knows is enough to open the page.
+        let fetched = try? await container.library?.album(id: albumID)
+        albumDestination = fetched ?? Album(
+            id: albumID,
+            title: track.albumName ?? "",
+            artistName: track.artistName,
+            artistID: track.artistID,
+            imageTag: track.imageTag
+        )
+    }
+
+    private func openArtist(of track: Track) async {
+        guard let artistID = track.artistID else { return }
+        let fetched = try? await container.library?.artist(id: artistID)
+        artistDestination = fetched ?? Artist(id: artistID, name: track.artistName)
+    }
+
+    /// Album / artist pages open as a sheet over the player, so playback
+    /// controls are one swipe away and the tab underneath is left alone.
+    private func destinationSheet<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        NavigationStack {
+            content()
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            albumDestination = nil
+                            artistDestination = nil
+                        }
+                    }
+                }
+        }
+        .environmentObject(container)
+        .environmentObject(playerState)
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let errorMessage = playerState.errorMessage {
+            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.red)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+    }
+
+    private var volumeRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "speaker.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            // System/output volume — also controls the AirPlay device.
+            SystemVolumeSlider()
+                .frame(height: 28)
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Volume")
+    }
+
+    private var bottomBar: some View {
+        HStack(spacing: 28) {
+            AirPlayRoutePicker()
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("AirPlay")
+            Button {
+                showLyrics = true
+            } label: {
+                Image(systemName: "quote.bubble")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(playerState.currentTrack == nil)
+            .accessibilityLabel("Lyrics")
+            Button {
+                cycleVisualizer()
+            } label: {
+                Image(systemName: visualizerStyle == .wave ? "waveform.path" : "waveform")
+                    .font(.title3)
+                    .foregroundStyle(visualizerStyle == .off ? Color.secondary : visualizerTint)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Visualizer")
+            .accessibilityValue(visualizerDescription)
+            Button {
+                showQueue = true
+            } label: {
+                Image(systemName: "list.bullet")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Queue")
+            .accessibilityValue("\(playerState.upNext.count) up next")
+        }
     }
 
     private var header: some View {
         HStack {
-            headerButton(systemName: "chevron.down") { dismiss() }
+            headerButton(systemName: "chevron.down", label: "Close Player") { dismiss() }
             Spacer()
             if let album = playerState.currentTrack?.albumName {
                 Text(album)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .accessibilityLabel("Album: \(album)")
             }
             Spacer()
             sleepTimerMenu
-            headerButton(systemName: "list.bullet") { showQueue = true }
         }
     }
 
@@ -139,7 +417,7 @@ struct NowPlayingView: View {
                 Image(systemName: playerState.sleepTimerActive ? "moon.fill" : "moon")
                     .font(.title3.bold())
                 if let remaining = playerState.sleepTimerRemaining {
-                    Text(formatShort(remaining))
+                    Text(PlaybackTimeFormat.clock(remaining))
                         .font(.caption.monospacedDigit())
                 }
             }
@@ -148,14 +426,19 @@ struct NowPlayingView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Sleep Timer")
+        .accessibilityValue(sleepTimerDescription)
     }
 
-    private func formatShort(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
+    private var sleepTimerDescription: String {
+        guard playerState.sleepTimerActive else { return String(localized: "Off") }
+        if let remaining = playerState.sleepTimerRemaining {
+            return String(localized: "\(PlaybackTimeFormat.spoken(remaining)) remaining")
+        }
+        return String(localized: "Stops at the end of this track")
     }
 
-    private func headerButton(systemName: String, action: @escaping () -> Void) -> some View {
+    private func headerButton(systemName: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.title3.bold())
@@ -164,204 +447,73 @@ struct NowPlayingView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 }
 
-/// Spotify-style "Up Next" queue: tap a row to jump to it, swipe to remove.
-struct QueueView: View {
-    @EnvironmentObject private var container: DependencyContainer
-    @ObservedObject var playerState: PlayerStateModel
-    @Environment(\.dismiss) private var dismiss
+/// Codec · resolution · bitrate, plus how the audio reaches the device.
+struct AudioQualityBadge: View {
+    let info: AudioQualityInfo
 
     var body: some View {
-        NavigationStack {
-            List {
-                if let current = playerState.currentTrack {
-                    Section("Now Playing") {
-                        QueueRow(track: current)
-                    }
-                }
-                Section("Up Next") {
-                    if playerState.upNext.isEmpty {
-                        Text("Queue is empty.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(Array(playerState.upNext.enumerated()), id: \.offset) { index, track in
-                            Button {
-                                container.player?.playUpNext(at: index)
-                            } label: {
-                                QueueRow(track: track)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .onDelete { offsets in
-                            for index in offsets.sorted(by: >) {
-                                container.player?.removeUpNext(at: index)
-                            }
-                        }
-                        .onMove { offsets, destination in
-                            container.player?.moveUpNext(fromOffsets: offsets, toOffset: destination)
-                        }
-                    }
-                }
+        HStack(spacing: 6) {
+            if info.isLossless {
+                Text(info.isHiRes ? "HI-RES" : "LOSSLESS")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
             }
-            .listStyle(.plain)
-            .navigationTitle("Queue")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton()
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
+            Text(info.summary)
+                .font(.caption2.monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Image(systemName: deliveryIcon)
+                .font(.caption2)
         }
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Audio quality")
+        .accessibilityValue(accessibilityText)
+    }
+
+    private var deliveryIcon: String {
+        switch info.delivery {
+        case .direct: return "dot.radiowaves.left.and.right"
+        case .transcoded: return "arrow.triangle.2.circlepath"
+        case .downloaded: return "arrow.down.circle.fill"
+        }
+    }
+
+    private var deliveryText: String {
+        switch info.delivery {
+        case .direct: return String(localized: "streamed directly")
+        case .transcoded: return String(localized: "transcoded by the server")
+        case .downloaded: return String(localized: "downloaded")
+        }
+    }
+
+    private var accessibilityText: String {
+        var parts: [String] = []
+        if info.isLossless {
+            parts.append(info.isHiRes ? String(localized: "High resolution lossless") : String(localized: "Lossless"))
+        }
+        parts.append(info.summary)
+        parts.append(deliveryText)
+        return parts.joined(separator: ", ")
     }
 }
 
-/// Full-screen lyrics. Synced lyrics highlight + auto-scroll the active line
-/// (driven off the player clock); plain lyrics just scroll.
-struct LyricsView: View {
-    @EnvironmentObject private var container: DependencyContainer
-    @ObservedObject var playerState: PlayerStateModel
-    @Environment(\.dismiss) private var dismiss
-    let track: Track
-    @State private var timeline: LyricsTimeline?
-    @State private var loaded = false
-
-    private var activeIndex: Int? {
-        timeline?.activeLineIndex(at: playerState.currentTime)
-    }
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            BlurredArtBackground(track: track)
-            content
-            HStack {
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.title3.bold())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal)
-        }
-        .task {
-            timeline = try? await container.library?.lyrics(forTrack: track.id)
-            loaded = true
-        }
-    }
-
-    @ViewBuilder private var content: some View {
-        if let timeline, !timeline.lines.isEmpty {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        ForEach(Array(timeline.lines.enumerated()), id: \.offset) { index, line in
-                            Text(line.text.isEmpty ? " " : line.text)
-                                .font(.title3.weight(.bold))
-                                .foregroundStyle(activeIndex == index ? Color.white : Color.white.opacity(0.45))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(index)
-                        }
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 72)
-                    .padding(.bottom, 60)
-                }
-                .task(id: activeIndex) {
-                    guard let activeIndex else { return }
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        proxy.scrollTo(activeIndex, anchor: .center)
-                    }
-                }
-            }
-        } else if loaded {
-            ContentUnavailableCompatView(
-                title: "No Lyrics",
-                systemImage: "quote.bubble",
-                description: "This track has no lyrics."
-            )
-        } else {
-            ProgressView()
-        }
-    }
-}
-
-private struct QueueRow: View {
-    let track: Track
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 44)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.title).lineLimit(1)
-                Text(track.artistName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-}
-
-/// Scrubber with elapsed / remaining labels. Scrubbing updates a local value
-/// and only seeks on release so the periodic time observer doesn't fight the
-/// user's finger.
-private struct ProgressSection: View {
-    @EnvironmentObject private var container: DependencyContainer
-    @ObservedObject var playerState: PlayerStateModel
-    @State private var scrubTime: Double?
-
-    var body: some View {
-        let duration = max(playerState.currentTrack?.duration ?? 1, 1)
-        let position = scrubTime ?? min(playerState.currentTime, duration)
-        VStack(spacing: 4) {
-            Slider(
-                value: Binding(
-                    get: { position },
-                    set: { scrubTime = $0 }
-                ),
-                in: 0...duration
-            ) { editing in
-                if !editing, let target = scrubTime {
-                    container.player?.seek(to: target)
-                    // Clear on the next runloop: the slider fires this inside a
-                    // view-update transaction, and mutating @State synchronously
-                    // here trips "modifying state during view update".
-                    DispatchQueue.main.async { scrubTime = nil }
-                }
-            }
-            .tint(.white)
-            HStack {
-                Text(format(position))
-                Spacer()
-                Text("-" + format(max(duration - position, 0)))
-            }
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal)
-    }
-
-    private func format(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
-    }
-}
-
+/// Blurred cover behind the player. With Reduce Transparency on, the blur is
+/// replaced by a plain dark background so text keeps its contrast.
 struct BlurredArtBackground: View {
     @EnvironmentObject private var container: DependencyContainer
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let track: Track?
 
     var body: some View {
         Group {
-            if let track {
+            if let track, !reduceTransparency {
                 ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 400)
                     .blur(radius: 60)
                     .opacity(0.6)
@@ -372,56 +524,11 @@ struct BlurredArtBackground: View {
         }
         .ignoresSafeArea()
         .background(Color.black)
+        .accessibilityHidden(true)
     }
 }
 
-struct PlayerControlsView: View {
-    @EnvironmentObject private var container: DependencyContainer
-    @ObservedObject var playerState: PlayerStateModel
-
-    var body: some View {
-        HStack(spacing: 28) {
-            Button {
-                container.player?.setShuffle(!playerState.isShuffled)
-            } label: {
-                Image(systemName: "shuffle")
-                    .font(.title3)
-                    .foregroundStyle(playerState.isShuffled ? Color.purple : Color.white)
-            }
-            Button {
-                container.player?.skipToPrevious()
-            } label: {
-                Image(systemName: "backward.fill")
-                    .font(.title2)
-            }
-            Button {
-                playerState.isPlaying ? container.player?.pause() : container.player?.play()
-            } label: {
-                Image(systemName: playerState.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 54))
-            }
-            Button {
-                container.player?.skipToNext()
-            } label: {
-                Image(systemName: "forward.fill")
-                    .font(.title2)
-            }
-            Button {
-                container.player?.cycleRepeatMode()
-            } label: {
-                Image(systemName: playerState.repeatMode == .one ? "repeat.1" : "repeat")
-                    .font(.title3)
-                    .foregroundStyle(playerState.repeatMode == .off ? Color.white : Color.purple)
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .glassCapsule()
-    }
-}
-
-/// System output-volume slider (`MPVolumeView`). Unlike `AVPlayer.volume`,
+/// System output-volume slider (`MPVolumeView`). Unlike a player-node volume,
 /// this controls the actual route volume, so it also works over AirPlay.
 /// Note: it's inert in the Simulator (no audio hardware).
 struct SystemVolumeSlider: UIViewRepresentable {
@@ -447,23 +554,4 @@ struct AirPlayRoutePicker: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
-}
-
-/// Observable bridge between `PlayerEngine` state and SwiftUI. A single
-/// instance lives in `DependencyContainer` and is fed by `EnginePlayer`
-/// (always on the main thread) and injected into the player views.
-final class PlayerStateModel: ObservableObject {
-    @Published var currentTrack: Track?
-    @Published var isPlaying = false
-    @Published var currentTime: TimeInterval = 0
-    /// Upcoming tracks after the current one, for the Up Next / queue view.
-    @Published var upNext: [Track] = []
-    /// Non-nil when the current track failed to start; surfaced in the UI.
-    @Published var errorMessage: String?
-    /// Sleep-timer state for the moon button / countdown in the player.
-    @Published var sleepTimerActive = false
-    @Published var sleepTimerRemaining: TimeInterval?
-    /// Shuffle / repeat state for the transport buttons.
-    @Published var isShuffled = false
-    @Published var repeatMode: RepeatMode = .off
 }

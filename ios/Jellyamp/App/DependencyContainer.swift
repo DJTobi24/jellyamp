@@ -199,12 +199,25 @@ final class DependencyContainer: ObservableObject {
         if let downloads, let online = library {
             library = offline.activate(wrapping: online, downloads: downloads, container: self)
         }
-        // Crossfade-capable engine (mixes two nodes). Swap back to
-        // `EnginePlayer(...)` for the AVPlayer streaming engine if needed.
+        // Crossfade-capable engine (mixes two nodes).
         let engine = AudioEnginePlayer(session: session, settings: settings, stateModel: playerState)
         player = engine
         if let preset = EQPreset.builtIn(id: settings.activeEQPresetID) {
             engine.apply(eqPreset: preset)
+        }
+        // Loudness-leveling fallbacks, injected as closures so the engine
+        // never sees the container: measured LUFS from the sonic server for
+        // tracks without a NormalizationGain tag (cached on disk), and the
+        // album's own gain for consecutive tracks of one album.
+        let loudness = LoudnessService { [weak self] trackID in
+            guard let self, let sonic = await self.loudnessCapableSonic() else { return nil }
+            let measured = try await sonic.loudness(forTrack: trackID)
+            return MeasuredLoudness(integratedLufs: measured.integratedLufs, truePeakDB: measured.truePeak)
+        }
+        engine.loudnessLookup = { trackID in await loudness.loudness(forTrack: trackID) }
+        engine.albumGainLookup = { [weak self] albumID in
+            guard let library = await self?.library else { return nil }
+            return (try? await library.album(id: albumID))?.normalizationGainDB
         }
         systemMedia = SystemMediaController(player: engine, playerState: playerState, session: session)
         setupAutoplay()
@@ -234,6 +247,11 @@ final class DependencyContainer: ObservableObject {
         if playHistory.count > 200 { playHistory.removeFirst(playHistory.count - 200) }
         stations.trackChanged(to: trackID, upNext: playerState.upNext)
         maybeRefillRadio()
+    }
+
+    /// The sonic provider, but only when it can measure loudness.
+    private func loudnessCapableSonic() -> SonicProviding? {
+        sonicCapabilities.supports(.loudness) ? sonic : nil
     }
 
     private func maybeRefillRadio() {

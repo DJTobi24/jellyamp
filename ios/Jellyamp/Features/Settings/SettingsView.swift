@@ -7,18 +7,11 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Playback") {
-                    VStack(alignment: .leading) {
-                        Text("Crossfade: \(Int(container.settings.crossfadeDuration)) s")
-                        Slider(value: $container.settings.crossfadeDuration, in: 0...12, step: 1)
-                    }
-                    Toggle("Loudness Leveling", isOn: $container.settings.loudnessLevelingEnabled)
-                    Toggle("Silence Compression", isOn: $container.settings.silenceCompressionEnabled)
-                    Toggle("Autoplay", isOn: $container.settings.autoplayEnabled)
+                Section {
                     NavigationLink {
-                        EqualizerView()
+                        PlaybackSettingsView()
                     } label: {
-                        LabeledContent("Equalizer", value: activePresetName)
+                        Label("Playback", systemImage: "waveform")
                     }
                 }
 
@@ -66,10 +59,6 @@ struct SettingsView: View {
                 container.saveSettings()
             }
         }
-    }
-
-    private var activePresetName: String {
-        EQPreset.builtIn(id: container.settings.activeEQPresetID)?.name ?? "Off"
     }
 }
 

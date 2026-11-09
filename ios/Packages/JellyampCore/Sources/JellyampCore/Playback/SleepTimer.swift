@@ -22,6 +22,11 @@ public struct SleepTimer: Equatable, Sendable {
 
     public var isActive: Bool { mode != nil }
 
+    /// True in "stop at the end of this track" mode. The engine must then let
+    /// the track run out on its own: starting a crossfade would hand over to
+    /// the next track and the stop would never happen.
+    public var stopsAtEndOfTrack: Bool { mode == .endOfTrack }
+
     public mutating func start(duration: TimeInterval, now: TimeInterval) {
         mode = .duration(endsAt: now + duration)
     }

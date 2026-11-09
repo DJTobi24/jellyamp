@@ -52,4 +52,22 @@ public protocol PlayerEngine: AnyObject {
 
     /// Push updated settings (crossfade duration, loudness, …) to the engine.
     func updateSettings(_ settings: AppSettings)
+
+    // Queue sheet + favorites (defaults below keep other conformers source-compatible).
+    /// Remove every upcoming item, keeping the current track playing.
+    func clearUpNext()
+    /// Jump back to an already played item (index into the queue's history, oldest first).
+    func playFromHistory(at historyIndex: Int)
+    /// Set an explicit repeat mode (remote-command centre, CarPlay).
+    func setRepeatMode(_ mode: RepeatMode)
+    /// Mirror a favorite change into the queued copies of a track so the
+    /// player UI and lock screen stay in sync. Does not talk to the server.
+    func setFavorite(trackID: String, isFavorite: Bool)
+}
+
+public extension PlayerEngine {
+    func clearUpNext() {}
+    func playFromHistory(at historyIndex: Int) {}
+    func setRepeatMode(_ mode: RepeatMode) {}
+    func setFavorite(trackID: String, isFavorite: Bool) {}
 }
