@@ -31,7 +31,11 @@ local SPM packages), `server/` (optional FastAPI sonic-analysis companion),
 | App target | macOS only: `xcodegen generate` + xcodebuild (CI: ios.yml on PRs) |
 
 Notes for sandboxed environments: Docker Hub blob pulls and swift.org may be
-blocked — rely on the GitHub Actions workflows for Swift verification then.
+blocked. The Google mirror usually works (start `dockerd` first if needed):
+`docker run --rm -v $PWD:/w -w /w/ios/Packages/<Pkg> mirror.gcr.io/library/swift:6.0 swift test`
+(same prefix for `jellyfin/jellyfin` and `library/python`). Otherwise rely on
+the GitHub Actions workflows. The app target only compiles on macOS: `ios.yml`
+runs on pushes to `claude/**` branches and on PRs.
 A stale `server/data/jellyamp.sqlite` from older schema versions breaks
 startup; delete it (it's gitignored, there are no migrations pre-1.0).
 
