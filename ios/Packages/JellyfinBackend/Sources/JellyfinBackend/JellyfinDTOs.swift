@@ -30,11 +30,13 @@ struct BaseItemDto: Codable {
     var MediaSources: [MediaSource]?
     var NormalizationGain: Double?
     var UserData: UserData?
+    var PlaylistItemId: String?
     var Genres: [String]?
     var ProductionYear: Int?
     var ImageTags: [String: String]?
     var AlbumPrimaryImageTag: String?
     var ChildCount: Int?
+    var Overview: String?
 
     struct NameID: Codable {
         var Name: String?
@@ -105,7 +107,8 @@ enum DTOMapper {
             name: dto.Name ?? "",
             genres: dto.Genres ?? [],
             isFavorite: dto.UserData?.IsFavorite ?? false,
-            imageTag: dto.ImageTags?["Primary"]
+            imageTag: dto.ImageTags?["Primary"],
+            overview: dto.Overview
         )
     }
 }
