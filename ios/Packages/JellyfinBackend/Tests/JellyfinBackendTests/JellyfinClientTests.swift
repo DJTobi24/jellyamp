@@ -84,6 +84,85 @@ final class BatchEchoTransport: HTTPTransport, @unchecked Sendable {
     }
 }
 
+/// A playlist "p" behind the three endpoints `movePlaylistItem` uses, with
+/// the move semantics of a correct server or of Jellyfin 10.10.7 (measured
+/// on a real server, see docs/JELLYFIN-API-NOTES.md).
+final class PlaylistServer: HTTPTransport, @unchecked Sendable {
+    enum Behaviour {
+        case correct
+        case jellyfin1010
+        case ignoresMoves
+    }
+
+    private let lock = NSLock()
+    private let behaviour: Behaviour
+    private var order: [String]
+    private var moveCount = 0
+    private var rewriteCount = 0
+    private var failureCount = 0
+
+    init(entries: [String], behaviour: Behaviour) {
+        self.order = entries
+        self.behaviour = behaviour
+    }
+
+    var entries: [String] { locked { order } }
+    var moves: Int { locked { moveCount } }
+    var rewrites: Int { locked { rewriteCount } }
+    var failures: Int { locked { failureCount } }
+
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock(); defer { lock.unlock() }
+        return body()
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (status, body) = locked { answer(request) }
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+        return (Data(body.utf8), response)
+    }
+
+    private func answer(_ request: URLRequest) -> (Int, String) {
+        let parts = request.url!.path.split(separator: "/").map(String.init)
+        switch (request.httpMethod ?? "GET", parts.count) {
+        case ("GET", 3):  // Playlists/p/Items
+            return (200, itemsJSON(order.map { item("item-\($0)", "\"PlaylistItemId\":\"\($0)\"") }))
+        case ("POST", 6):  // Playlists/p/Items/{entry}/Move/{index}
+            moveCount += 1
+            guard let old = order.firstIndex(of: parts[3]), let new = Int(parts[5]), new >= 0 else {
+                failureCount += 1
+                return (500, "Error processing request.")
+            }
+            switch behaviour {
+            case .ignoresMoves:
+                break
+            case .correct:
+                let entry = order.remove(at: old)
+                order.insert(entry, at: min(new, order.count))
+            case .jellyfin1010:
+                guard new < order.count else {
+                    failureCount += 1
+                    return (500, "Error processing request.")
+                }
+                if new != old {
+                    let landsAt = new < old ? max(new, 1) : min(new + 1, order.count - 1)
+                    order.insert(order.remove(at: old), at: landsAt)
+                }
+            }
+            return (204, "")
+        case ("POST", 2):  // Playlists/p  {"Ids": [...]}
+            rewriteCount += 1
+            let body = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any]
+            let ids = body?["Ids"] as? [String] ?? []
+            order = ids.map { String($0.dropFirst("item-".count)) }
+            return (204, "")
+        default:
+            failureCount += 1
+            return (404, "")
+        }
+    }
+}
+
 let scriptedSession = JellyfinSession(
     serverURL: URL(string: "http://jellyfin.local:8096")!,
     deviceID: "device-1",

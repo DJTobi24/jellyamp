@@ -159,62 +159,83 @@ final class ServerBehaviourTests: XCTestCase {
 
     // MARK: Playlist reordering
 
-    /// A playlist "p" whose entries are listed as `order` after the move call.
-    private func playlistTransport(orderAfterMove order: [String], moveStatus: Int = 204) -> ScriptedTransport {
-        let transport = ScriptedTransport()
-        transport.on("/Move/", method: "POST", status: moveStatus)
-        transport.on("Playlists/p/Items", method: "GET", json: itemsJSON(order.map {
-            item("item-\($0)", "\"PlaylistItemId\":\"entry-\($0)\"")
-        }))
-        transport.on("Playlists/p", method: "POST", status: 204)
-        return transport
+    func testEveryMoveLandsWhereAskedOnACorrectServerAndOnJellyfin1010() async throws {
+        for behaviour in [PlaylistServer.Behaviour.correct, .jellyfin1010] {
+            for count in 1...6 {
+                let entries = (0..<count).map { "e\($0)" }
+                for from in 0..<count {
+                    for to in 0..<count {
+                        let server = PlaylistServer(entries: entries, behaviour: behaviour)
+                        let library = MusicLibraryAPI(session: scriptedSession, transport: server)
+                        try await library.movePlaylistItem(playlistID: "p", entryID: entries[from], toIndex: to)
+                        var expected = entries
+                        expected.insert(expected.remove(at: from), at: to)
+                        let label = "\(behaviour) n=\(count) \(from)->\(to)"
+                        XCTAssertEqual(server.entries, expected, label)
+                        XCTAssertEqual(server.rewrites, 0, "\(label): no need to rewrite the playlist")
+                        XCTAssertLessThanOrEqual(server.moves, behaviour == .correct ? 1 : 3, label)
+                        if from == to {
+                            XCTAssertEqual(server.moves, 0, label)
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    func testMoveIsLeftAloneWhenTheServerGotItRight() async throws {
-        let transport = playlistTransport(orderAfterMove: ["c", "a", "b"])
-        try await api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-c", toIndex: 0)
-        XCTAssertEqual(transport.requests.map { "\($0.httpMethod!) \($0.url!.path)" }, [
-            "POST /Playlists/p/Items/entry-c/Move/0",
-            "GET /Playlists/p/Items",
-        ])
-        XCTAssertEqual(transport.query(1)["userId"], "user-1")
-    }
-
-    func testMoveIsRepairedWhenTheServerMisplacesTheEntry() async throws {
-        // Jellyfin 10.10.7, asked to move the last of three entries to the
-        // top, puts it second.
-        let transport = playlistTransport(orderAfterMove: ["a", "c", "b"])
-        try await api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-c", toIndex: 0)
-        XCTAssertEqual(transport.requests.count, 3)
-        XCTAssertEqual(transport.requests[2].httpMethod, "POST")
-        XCTAssertEqual(transport.requests[2].url?.path, "/Playlists/p")
-        XCTAssertEqual(transport.jsonBody(2)["Ids"] as? [String], ["item-c", "item-a", "item-b"])
-    }
-
-    func testMoveSurvivesTheServerCrashingOnAnIndexPastTheEnd() async throws {
-        // 10.10 answers 500 (IndexOutOfRange) and moves nothing.
-        let transport = playlistTransport(orderAfterMove: ["a", "b", "c"], moveStatus: 500)
-        try await api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-a", toIndex: 99)
-        XCTAssertEqual(transport.jsonBody(2)["Ids"] as? [String], ["item-b", "item-c", "item-a"])
+    func testMoveIndexIsClampedSoTheServerNeverSeesOnePastTheEnd() async throws {
+        // 10.10 answers 500 (IndexOutOfRange) for an index past the end.
+        for behaviour in [PlaylistServer.Behaviour.correct, .jellyfin1010] {
+            let server = PlaylistServer(entries: ["a", "b", "c"], behaviour: behaviour)
+            let library = MusicLibraryAPI(session: scriptedSession, transport: server)
+            try await library.movePlaylistItem(playlistID: "p", entryID: "a", toIndex: 99)
+            XCTAssertEqual(server.entries, ["b", "c", "a"])
+            try await library.movePlaylistItem(playlistID: "p", entryID: "a", toIndex: -3)
+            XCTAssertEqual(server.entries, ["a", "b", "c"])
+            XCTAssertEqual(server.failures, 0)
+        }
     }
 
     func testMoveOfAnEntryThatIsNotInThePlaylistIsNotFound() async throws {
-        // 10.10 answers 500 (NullReference) for an unknown entry.
-        let transport = playlistTransport(orderAfterMove: ["a", "b"], moveStatus: 500)
+        // 10.10's own move answers 500 (NullReference) for this.
+        let server = PlaylistServer(entries: ["a", "b"], behaviour: .jellyfin1010)
         await assertThrows(.notFound) {
-            try await self.api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-x", toIndex: 0)
+            try await MusicLibraryAPI(session: scriptedSession, transport: server)
+                .movePlaylistItem(playlistID: "p", entryID: "x", toIndex: 0)
         }
-        XCTAssertEqual(transport.requests.count, 2, "nothing is rewritten")
+        XCTAssertEqual(server.moves, 0)
     }
 
     func testMoveInAMissingPlaylistOrWithoutSessionStopsAtTheFirstAnswer() async throws {
         for (status, expected) in [(404, JellyfinError.notFound), (401, .unauthorized)] {
-            let transport = playlistTransport(orderAfterMove: ["a", "b"], moveStatus: status)
+            let transport = ScriptedTransport()
+            transport.on("Playlists", status: status)
             await assertThrows(expected) {
-                try await self.api(transport).movePlaylistItem(playlistID: "p", entryID: "entry-a", toIndex: 1)
+                try await self.api(transport).movePlaylistItem(playlistID: "p", entryID: "a", toIndex: 1)
             }
             XCTAssertEqual(transport.requests.count, 1)
         }
+    }
+
+    func testMoveWritesTheOrderOutrightOnlyWhenMovesDoNotGetThere() async throws {
+        // A server whose move does nothing at all.
+        let server = PlaylistServer(entries: ["a", "b", "c", "d"], behaviour: .ignoresMoves)
+        try await MusicLibraryAPI(session: scriptedSession, transport: server)
+            .movePlaylistItem(playlistID: "p", entryID: "d", toIndex: 1)
+        XCTAssertEqual(server.entries, ["a", "d", "b", "c"])
+        XCTAssertEqual(server.moves, PlaylistReorder.maxMoves)
+        XCTAssertEqual(server.rewrites, 1)
+    }
+
+    func testNextMoveGivesUpWhenThePlaylistChangedUnderneath() {
+        XCTAssertNil(PlaylistReorder.nextMove(current: ["a", "b"], desired: ["a", "b"]))
+        XCTAssertNil(PlaylistReorder.nextMove(current: ["a", "b", "c"], desired: ["b", "a"]))
+        XCTAssertNil(PlaylistReorder.nextMove(current: ["a", "x"], desired: ["b", "a"]))
+        XCTAssertEqual(PlaylistReorder.nextMove(current: ["a", "b", "c"], desired: ["a", "c", "b"])?.entryID, "c")
+        // Second entry belongs on top: move the top one down, not the second up.
+        let swap = PlaylistReorder.nextMove(current: ["a", "b", "c"], desired: ["b", "c", "a"])
+        XCTAssertEqual(swap?.entryID, "a")
+        XCTAssertEqual(swap?.index, 2)
     }
 
     // MARK: Favorites
