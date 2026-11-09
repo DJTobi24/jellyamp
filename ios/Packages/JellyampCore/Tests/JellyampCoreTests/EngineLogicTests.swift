@@ -73,6 +73,15 @@ final class QueueSheetTests: XCTestCase {
         XCTAssertNil(queue.absoluteIndex(forUpNext: -1))
     }
 
+    func testNextTrackIndexFollowsRepeatMode() {
+        var queue = PlayQueue(tracks: [track(1), track(2)], startAt: 1)
+        XCTAssertNil(queue.nextTrackIndex)
+        queue.setRepeatMode(.all)
+        XCTAssertEqual(queue.nextTrackIndex, 0)
+        queue.setRepeatMode(.one)
+        XCTAssertEqual(queue.nextTrackIndex, 1)
+    }
+
     func testHasPrevious() {
         var queue = PlayQueue(tracks: [track(1), track(2)])
         XCTAssertFalse(queue.hasPrevious)
