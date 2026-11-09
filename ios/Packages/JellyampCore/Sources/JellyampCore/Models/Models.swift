@@ -22,6 +22,9 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
     public var genres: [String]
     public var productionYear: Int?
     public var imageTag: String?
+    /// Identifies this track's entry within a playlist (Jellyfin's
+    /// `PlaylistItemId`); needed to remove or reorder it. Nil outside playlists.
+    public var playlistEntryID: String?
 
     public init(
         id: String,
@@ -42,7 +45,8 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         isFavorite: Bool = false,
         genres: [String] = [],
         productionYear: Int? = nil,
-        imageTag: String? = nil
+        imageTag: String? = nil,
+        playlistEntryID: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -63,6 +67,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         self.genres = genres
         self.productionYear = productionYear
         self.imageTag = imageTag
+        self.playlistEntryID = playlistEntryID
     }
 }
 
@@ -112,13 +117,16 @@ public struct Artist: Codable, Hashable, Identifiable, Sendable {
     public var genres: [String]
     public var isFavorite: Bool
     public var imageTag: String?
+    /// Biography / "About" text (Jellyfin `Overview`), when fetched in detail.
+    public var overview: String?
 
-    public init(id: String, name: String, genres: [String] = [], isFavorite: Bool = false, imageTag: String? = nil) {
+    public init(id: String, name: String, genres: [String] = [], isFavorite: Bool = false, imageTag: String? = nil, overview: String? = nil) {
         self.id = id
         self.name = name
         self.genres = genres
         self.isFavorite = isFavorite
         self.imageTag = imageTag
+        self.overview = overview
     }
 }
 
