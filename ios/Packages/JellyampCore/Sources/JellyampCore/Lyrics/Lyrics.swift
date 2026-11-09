@@ -47,6 +47,9 @@ public enum LyricsParser {
 
     private static func parseTimestamp(_ tag: String) -> TimeInterval? {
         let parts = tag.split(separator: ":")
+        if parts.count == 3, let hours = Double(parts[0]), let minutes = Double(parts[1]), let seconds = Double(parts[2]) {
+            return hours * 3600 + minutes * 60 + seconds
+        }
         guard parts.count == 2, let minutes = Double(parts[0]), let seconds = Double(parts[1]) else {
             return nil
         }
@@ -79,5 +82,40 @@ public struct LyricsTimeline: Equatable, Sendable {
             }
         }
         return result
+    }
+}
+
+public extension LyricsTimeline {
+    /// Where to seek when the user taps a line; nil for unsynced lines.
+    func seekTime(forLine index: Int) -> TimeInterval? {
+        guard lines.indices.contains(index) else { return nil }
+        return lines[index].start
+    }
+}
+
+/// Decides whether the lyrics view should follow the active line. Scrolling
+/// by hand suspends following for a moment so the view does not yank the text
+/// away from under the reader's finger.
+public struct LyricsAutoScroll: Equatable, Sendable {
+    /// Following resumes this long after the last manual scroll.
+    public var resumeDelay: TimeInterval
+    private var suspendedUntil: TimeInterval?
+
+    public init(resumeDelay: TimeInterval = 4) {
+        self.resumeDelay = resumeDelay
+    }
+
+    public mutating func userScrolled(now: TimeInterval) {
+        suspendedUntil = now + resumeDelay
+    }
+
+    /// The user asked to jump back to the active line (or tapped a line).
+    public mutating func resume() {
+        suspendedUntil = nil
+    }
+
+    public func shouldFollow(now: TimeInterval) -> Bool {
+        guard let suspendedUntil else { return true }
+        return now >= suspendedUntil
     }
 }

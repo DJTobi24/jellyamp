@@ -40,6 +40,25 @@ public struct PlayQueue: Equatable, Sendable {
 
     public var remainingCount: Int { upNext.count }
 
+    /// Tracks before the current one, oldest first (the queue sheet's history).
+    public var history: [Track] {
+        guard let index = currentIndex else { return [] }
+        return Array(tracks.prefix(index))
+    }
+
+    /// Whether "previous" has somewhere to go other than restarting the
+    /// current track.
+    public var hasPrevious: Bool {
+        guard let index = currentIndex, !tracks.isEmpty else { return false }
+        return index > 0 || (repeatMode != .off && tracks.count > 1)
+    }
+
+    /// Absolute index for an offset into `upNext`, or nil when out of range.
+    public func absoluteIndex(forUpNext offset: Int) -> Int? {
+        let absolute = (currentIndex ?? -1) + 1 + offset
+        return offset >= 0 && tracks.indices.contains(absolute) ? absolute : nil
+    }
+
     /// The track that will play after the current one, honoring repeat mode.
     public var nextTrack: Track? {
         guard let index = nextIndex() else { return nil }
@@ -120,8 +139,12 @@ public struct PlayQueue: Equatable, Sendable {
     /// Append tracks to the end of the queue ("Add to Queue").
     public mutating func append(_ newTracks: [Track]) {
         guard !newTracks.isEmpty else { return }
+        // An exhausted queue (played to the end, `currentIndex == nil`) still
+        // holds its old tracks; adding to it must start at the first *new*
+        // track, not replay the old queue from the top.
+        let firstNew = tracks.count
         tracks.append(contentsOf: newTracks)
-        if currentIndex == nil { currentIndex = 0 }
+        if currentIndex == nil { currentIndex = firstNew }
         unshuffledTracks?.append(contentsOf: newTracks)
     }
 
@@ -131,7 +154,37 @@ public struct PlayQueue: Equatable, Sendable {
         if let current = currentIndex, index < current {
             currentIndex = current - 1
         }
-        unshuffledTracks?.removeAll { $0 == removed }
+        // Only one occurrence: the same track may be queued more than once.
+        if let original = unshuffledTracks?.firstIndex(of: removed) {
+            unshuffledTracks?.remove(at: original)
+        }
+    }
+
+    /// Drops everything after the current track ("Clear" in the queue sheet).
+    public mutating func clearUpNext() {
+        guard let index = currentIndex, index + 1 < tracks.count else { return }
+        tracks.removeSubrange((index + 1)...)
+        if let original = unshuffledTracks {
+            // Keep the original order of what is left, respecting duplicates.
+            var remaining = tracks
+            unshuffledTracks = original.filter { track in
+                guard let match = remaining.firstIndex(of: track) else { return false }
+                remaining.remove(at: match)
+                return true
+            }
+        }
+    }
+
+    /// Applies an edit (e.g. a favorite toggle) to every queued copy of a track.
+    public mutating func updateTracks(id: String, _ transform: (inout Track) -> Void) {
+        for index in tracks.indices where tracks[index].id == id {
+            transform(&tracks[index])
+        }
+        guard var original = unshuffledTracks else { return }
+        for index in original.indices where original[index].id == id {
+            transform(&original[index])
+        }
+        unshuffledTracks = original
     }
 
     public mutating func move(from source: Int, to destination: Int) {
