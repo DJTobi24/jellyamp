@@ -158,16 +158,45 @@ final class StreamURLBuilderTests: XCTestCase {
     }
 
     func testSeekAddsStartTimeTicksOnce() {
-        let base = StreamURLBuilder.url(
-            for: "track1",
-            request: .transcode(codec: "aac", container: "m4a", maxBitrate: 320_000),
-            session: testSession
-        )
+        // On the progressive transcode: that is the stream `startTimeTicks`
+        // seeks. (This test used the HLS URL as its base until the real
+        // server showed that it rejects HLS segments carrying the parameter.)
+        let base = StreamURLBuilder.progressiveTranscodeURL(
+            for: "track1", codec: "aac", container: "aac", maxBitrate: 320_000, session: testSession)
         let seeked = StreamURLBuilder.url(StreamURLBuilder.url(base, seekingTo: 10), seekingTo: 65.5)
         let query = queryItems(of: seeked)
         XCTAssertEqual(query["startTimeTicks"], "655000000")
         let occurrences = seeked.query!.components(separatedBy: "startTimeTicks").count - 1
         XCTAssertEqual(occurrences, 1)
+    }
+
+    func testSeekLeavesHLSURLsWithoutStartTimeTicks() {
+        // Jellyfin answers 400 "StartTimeTicks is not allowed" for every HLS
+        // segment of a playlist requested with it; HLS seeks client-side.
+        let base = StreamURLBuilder.url(
+            for: "track1",
+            request: .transcode(codec: "aac", container: "m4a", maxBitrate: 320_000),
+            session: testSession
+        )
+        let seeked = StreamURLBuilder.url(base, seekingTo: 65.5)
+        XCTAssertEqual(seeked, base)
+        XCTAssertNil(queryItems(of: seeked)["startTimeTicks"])
+    }
+
+    func testProgressiveTranscodeURL() {
+        let url = StreamURLBuilder.progressiveTranscodeURL(
+            for: "track1", codec: "aac", container: "aac", maxBitrate: 128_000, startTime: 12.5, session: testSession)
+        XCTAssertTrue(url.path.hasSuffix("/Audio/track1/stream.aac"))
+        let query = queryItems(of: url)
+        XCTAssertEqual(query["audioCodec"], "aac")
+        XCTAssertEqual(query["audioBitRate"], "128000")
+        XCTAssertEqual(query["api_key"], "token-abc-123")
+        XCTAssertEqual(query["deviceId"], "device-1")
+        XCTAssertEqual(query["startTimeTicks"], "125000000")
+        XCTAssertNotNil(query["playSessionId"])
+        let fromStart = StreamURLBuilder.progressiveTranscodeURL(
+            for: "track1", codec: "aac", container: "aac", maxBitrate: 128_000, session: testSession)
+        XCTAssertNil(queryItems(of: fromStart)["startTimeTicks"])
     }
 }
 

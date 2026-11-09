@@ -71,11 +71,50 @@ public enum StreamURLBuilder {
         return components.url!
     }
 
-    /// Seek into a transcoded stream: same URL with `startTimeTicks`.
+    /// Progressive transcode (`/Audio/{id}/stream.{container}`): one HTTP
+    /// response with the re-encoded audio, for players that read a byte stream
+    /// themselves and cannot follow an HLS playlist. Not byte-seekable (no
+    /// `Content-Length`, no ranges); to seek, request it again with another
+    /// `startTime` — the stream then starts at that position.
+    public static func progressiveTranscodeURL(
+        for trackID: String,
+        codec: String,
+        container: String,
+        maxBitrate: Int,
+        startTime: TimeInterval = 0,
+        session: JellyfinSession
+    ) -> URL {
+        var components = URLComponents(
+            url: session.serverURL.appendingPathComponent("Audio/\(trackID)/stream.\(container)"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: session.accessToken ?? ""),
+            URLQueryItem(name: "deviceId", value: session.deviceID),
+            URLQueryItem(name: "playSessionId", value: UUID().uuidString),
+            URLQueryItem(name: "audioCodec", value: codec),
+            URLQueryItem(name: "audioSampleRate", value: "44100"),
+            URLQueryItem(name: "audioBitRate", value: String(maxBitrate)),
+            URLQueryItem(name: "maxAudioChannels", value: "2"),
+        ]
+        let url = components.url!
+        return startTime > 0 ? self.url(url, seekingTo: startTime) : url
+    }
+
+    /// Same URL with `startTimeTicks`: seeks a *progressive* transcode
+    /// (`progressiveTranscodeURL`), which then starts at that position.
+    ///
+    /// An HLS URL (`url(for:request:)` for `.transcode`) is returned without
+    /// it. HLS is seeked by the player, which fetches the segment it needs
+    /// from the playlist of the whole track; with `startTimeTicks` Jellyfin
+    /// still serves that same playlist but then refuses every segment in it
+    /// (400, "StartTimeTicks is not allowed").
     public static func url(_ base: URL, seekingTo seconds: TimeInterval) -> URL {
         var components = URLComponents(url: base, resolvingAgainstBaseURL: false)!
         var items = (components.queryItems ?? []).filter { $0.name != "startTimeTicks" }
-        items.append(URLQueryItem(name: "startTimeTicks", value: String(Int64(seconds * 10_000_000))))
+        if !base.path.lowercased().hasSuffix(".m3u8") {
+            items.append(URLQueryItem(name: "startTimeTicks", value: String(Int64(seconds * 10_000_000))))
+        }
         components.queryItems = items
         return components.url!
     }

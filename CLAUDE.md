@@ -27,6 +27,7 @@ local SPM packages), `server/` (optional FastAPI sonic-analysis companion),
 | What | How |
 |---|---|
 | Swift packages | `swift test` inside each package (Linux OK; CI: core-linux.yml uses the `swift:6.0` container) |
+| Jellyfin API layer, live | `scripts/dev-jellyfin/up.sh`, then in `ios/Packages/JellyfinBackend`: `JELLYFIN_TEST_URL=http://localhost:8096 JELLYFIN_TEST_USER=demo JELLYFIN_TEST_PASSWORD=demo swift test --filter JellyfinLiveTests` (skipped without the variables; in Docker add `--network host` and `-e`; CI: `jellyfin-live` in core-linux.yml). Findings: `docs/JELLYFIN-API-NOTES.md` |
 | Server | `cd server && .venv/bin/pytest -q && .venv/bin/ruff check .` (setup: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`) |
 | App target | macOS only: `xcodegen generate` + xcodebuild (CI: ios.yml on PRs) |
 
@@ -47,3 +48,9 @@ startup; delete it (it's gitignored, there are no migrations pre-1.0).
   `fields=`.
 - Transcoded `/Audio/{id}/universal` streams are not byte-seekable — seek by
   re-requesting with `startTimeTicks`.
+- …but never put `startTimeTicks` on an HLS URL (`main.m3u8`): Jellyfin then
+  answers every segment with 400. `StreamURLBuilder.url(_:seekingTo:)` knows.
+- More measured server quirks (playlist move off by one, `ids=` lists hitting
+  414, `+` decoded as space, play count taken at playback *start*, …) are in
+  `docs/JELLYFIN-API-NOTES.md`; add to it and to `JellyfinLiveTests` when a
+  new one turns up.
