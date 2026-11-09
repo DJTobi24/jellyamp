@@ -12,13 +12,15 @@ public final class LyricsAPI: @unchecked Sendable {
         self.client = JellyfinClient(session: session, transport: transport)
     }
 
-    struct LyricsDto: Codable {
-        struct Line: Codable {
-            var Text: String
+    /// `LyricDto`. Only `Lyrics` is read; a line that does not decode is
+    /// dropped rather than costing the whole song its lyrics.
+    struct LyricsDto: Decodable {
+        struct Line: Decodable {
+            var Text: String?
             /// Ticks (100 ns); nil for unsynced lyrics.
             var Start: Int64?
         }
-        var Lyrics: [Line]
+        var Lyrics: LossyArray<Line>?
     }
 
     /// Returns nil when the track has no lyrics: Jellyfin answers 404 both for
@@ -30,9 +32,10 @@ public final class LyricsAPI: @unchecked Sendable {
         } catch JellyfinError.notFound {
             return nil
         }
-        let lines = dto.Lyrics.map {
-            LyricLine(start: $0.Start.map { Double($0) / 10_000_000 }, text: $0.Text)
+        let lines = (dto.Lyrics?.elements ?? []).map {
+            LyricLine(start: $0.Start.map { Double($0) / 10_000_000 }, text: $0.Text ?? "")
         }
-        return LyricsTimeline(lines: lines)
+        // A lyrics file with nothing in it is "no lyrics" to the UI.
+        return lines.isEmpty ? nil : LyricsTimeline(lines: lines)
     }
 }

@@ -345,4 +345,28 @@ final class ServerBehaviourTests: XCTestCase {
         XCTAssertEqual(query["limit"], "25")
         XCTAssertTrue(transport.requests[0].url!.query!.contains("genres=Drum%20%26%20Bass"))
     }
+
+    // MARK: Lyrics
+
+    func testLyricsToleratePartialAndEmptyAnswers() async throws {
+        let transport = ScriptedTransport()
+        transport.on("Audio/real/Lyrics", json: """
+        {"Metadata":{},"Lyrics":[
+          {"Text":"This is a generated test track","Start":0},
+          {"Start":50000000},
+          {"Text":"bad start","Start":"soon"},
+          {"Text":"Goodbye","Start":250000000}
+        ]}
+        """)
+        transport.on("Audio/empty/Lyrics", json: "{\"Metadata\":{},\"Lyrics\":[]}")
+        transport.on("Audio/bare/Lyrics", json: "{}")
+        let api = LyricsAPI(session: scriptedSession, transport: transport)
+        let timeline = try await api.lyrics(forTrack: "real")
+        XCTAssertEqual(timeline?.lines.map(\.text), ["This is a generated test track", "", "Goodbye"])
+        XCTAssertEqual(timeline?.lines.map { $0.start ?? -1 }, [0, 5, 25])
+        let empty = try await api.lyrics(forTrack: "empty")
+        XCTAssertNil(empty)
+        let bare = try await api.lyrics(forTrack: "bare")
+        XCTAssertNil(bare)
+    }
 }
