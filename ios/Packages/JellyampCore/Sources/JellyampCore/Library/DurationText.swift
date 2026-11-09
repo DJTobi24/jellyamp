@@ -1,0 +1,60 @@
+import Foundation
+
+/// Duration strings for rows, headers and VoiceOver. One place, so "3:05"
+/// looks the same on every screen and never shows "0:60" or garbage for the
+/// NaN / negative values an unprobed track can carry.
+public enum DurationText {
+    private static func wholeSeconds(_ duration: TimeInterval) -> Int {
+        guard duration.isFinite, duration > 0 else { return 0 }
+        // Round first: 59.6 s must become 1:00, not 0:60 or 0:59.
+        return Int(min(duration.rounded(), 359_999))
+    }
+
+    /// Track-row style: `3:05`, `1:02:03`.
+    public static func clock(_ duration: TimeInterval) -> String {
+        let total = wholeSeconds(duration)
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+        if hours > 0 {
+            return "\(hours):\(pad(minutes)):\(pad(seconds))"
+        }
+        return "\(minutes):\(pad(seconds))"
+    }
+
+    /// Header style for a whole album or playlist: `45 sec`, `38 min`,
+    /// `1 hr 12 min`. Seconds are dropped once a minute is reached.
+    public static func approximate(_ duration: TimeInterval) -> String {
+        let total = wholeSeconds(duration)
+        if total < 60 { return "\(total) sec" }
+        // Round to the nearest minute so 59:40 reads "1 hr", not "59 min".
+        let totalMinutes = (total + 30) / 60
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours == 0 { return "\(minutes) min" }
+        if minutes == 0 { return "\(hours) hr" }
+        return "\(hours) hr \(minutes) min"
+    }
+
+    /// Spelled out for VoiceOver, which reads "3:05" as a time of day:
+    /// `3 minutes, 5 seconds`.
+    public static func spoken(_ duration: TimeInterval) -> String {
+        let total = wholeSeconds(duration)
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+        var parts: [String] = []
+        if hours > 0 { parts.append(plural(hours, "hour")) }
+        if minutes > 0 { parts.append(plural(minutes, "minute")) }
+        if seconds > 0 || parts.isEmpty { parts.append(plural(seconds, "second")) }
+        return parts.joined(separator: ", ")
+    }
+
+    static func plural(_ count: Int, _ unit: String) -> String {
+        count == 1 ? "1 \(unit)" : "\(count) \(unit)s"
+    }
+
+    private static func pad(_ value: Int) -> String {
+        value < 10 ? "0\(value)" : "\(value)"
+    }
+}
