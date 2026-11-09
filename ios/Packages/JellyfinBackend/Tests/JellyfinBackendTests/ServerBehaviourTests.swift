@@ -278,4 +278,50 @@ final class ServerBehaviourTests: XCTestCase {
         XCTAssertTrue(nothing.tracks.isEmpty && nothing.albums.isEmpty && nothing.artists.isEmpty && nothing.playlists.isEmpty)
         XCTAssertEqual(transport.requests.count, 4, "a blank term is not sent")
     }
+
+    // MARK: Instant mix / similar
+
+    func testInstantMixIsDistinctAndWithinTheLimit() async throws {
+        // 10.10 for a track seed with limit=3: seed, then a mix containing
+        // the seed again, four items in total.
+        let transport = ScriptedTransport()
+        transport.on("InstantMix", json: itemsJSON([item("seed"), item("a"), item("seed"), item("b")]))
+        let mix = InstantMixAPI(session: scriptedSession, transport: transport)
+        let ids = try await mix.instantMix(seedID: "seed", limit: 3)
+        XCTAssertEqual(ids, ["seed", "a", "b"])
+        XCTAssertEqual(transport.requests[0].url?.path, "/Items/seed/InstantMix")
+        XCTAssertEqual(transport.query()["limit"], "3")
+        XCTAssertEqual(transport.query()["userId"], "user-1")
+        XCTAssertEqual(transport.query()["enableUserData"], "false")
+    }
+
+    func testSimilarNeverContainsTheSeed() async throws {
+        let transport = ScriptedTransport()
+        transport.on("Similar", json: itemsJSON([
+            item("b", "\"Type\":\"MusicArtist\",\"Name\":\"B\""),
+            item("seed", "\"Type\":\"MusicArtist\""),
+            item("album", "\"Type\":\"MusicAlbum\""),
+            item("b", "\"Type\":\"MusicArtist\""),
+        ]))
+        let ids = try await InstantMixAPI(session: scriptedSession, transport: transport).similarItems(to: "seed", limit: 5)
+        XCTAssertEqual(ids, ["b", "album"])
+        let artists = try await api(transport).similarArtists(artistID: "seed", limit: 5)
+        XCTAssertEqual(artists.map(\.name), ["B", ""], "artists only, seed excluded")
+    }
+
+    func testRandomTracksSpellOutTheYears() async throws {
+        let transport = ScriptedTransport()
+        transport.on("Items", json: itemsJSON([item("a"), item("b")]))
+        let mix = InstantMixAPI(session: scriptedSession, transport: transport)
+        let ids = try await mix.randomTracks(genre: "Drum & Bass", yearRange: 1990...1993, limit: 25)
+        XCTAssertEqual(ids, ["a", "b"])
+        let query = transport.query()
+        XCTAssertEqual(query["years"], "1990,1991,1992,1993")
+        XCTAssertEqual(query["genres"], "Drum & Bass")
+        XCTAssertEqual(query["sortBy"], "Random")
+        XCTAssertEqual(query["includeItemTypes"], "Audio")
+        XCTAssertEqual(query["recursive"], "true")
+        XCTAssertEqual(query["limit"], "25")
+        XCTAssertTrue(transport.requests[0].url!.query!.contains("genres=Drum%20%26%20Bass"))
+    }
 }

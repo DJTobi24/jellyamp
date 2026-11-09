@@ -153,11 +153,12 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
 
     /// Similar artists via Jellyfin's metadata similarity (`/Items/{id}/Similar`).
     public func similarArtists(artistID: String, limit: Int = 12) async throws -> [Artist] {
-        let request = client.request(path: "Items/\(artistID)/Similar", query: [
+        let response = try await items(path: "Items/\(artistID)/Similar", query: [
             URLQueryItem(name: "limit", value: String(limit)),
-        ] + client.userQuery)
-        let response = try await execute(request).Items
-        return response.map(DTOMapper.artist(from:))
+        ])
+        return response
+            .filter { $0.Type == "MusicArtist" && !JellyfinClient.sameID($0.Id, artistID) }
+            .map(DTOMapper.artist(from:))
     }
 
     /// All tracks crediting this artist. Uses `artistIds` (any credit, not just
