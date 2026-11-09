@@ -6,9 +6,22 @@ import JellyfinBackend
 final class KeychainCredentialStore {
     private let service = "dev.djtobi.jellyamp"
 
-    func save(session: JellyfinSession) {
-        guard let data = try? JSONEncoder().encode(StoredSession(from: session)) else { return }
+    /// Stores the session together with what Settings → Account displays
+    /// (server name/version, user name) so that screen works offline too.
+    func save(session: JellyfinSession, account: JellyfinAccount? = nil) {
+        var stored = StoredSession(from: session)
+        stored.serverName = account?.serverName
+        stored.serverVersion = account?.serverVersion
+        stored.userName = account?.userName
+        guard let data = try? JSONEncoder().encode(stored) else { return }
         store(key: "session", data: data)
+    }
+
+    /// Display info saved alongside the session. Sessions stored by versions
+    /// that predate these fields decode to an account with all fields nil.
+    func loadAccount() -> JellyfinAccount? {
+        guard let data = load(key: "session") else { return nil }
+        return try? JSONDecoder().decode(JellyfinAccount.self, from: data)
     }
 
     func loadSession() -> JellyfinSession? {
@@ -74,6 +87,11 @@ private struct StoredSession: Codable {
     var deviceID: String
     var accessToken: String?
     var userID: String?
+    // Added after the first release: optional, and named exactly like
+    // `JellyfinAccount`'s properties, which is decoded from the same blob.
+    var serverName: String?
+    var serverVersion: String?
+    var userName: String?
 
     init(from session: JellyfinSession) {
         serverURL = session.serverURL

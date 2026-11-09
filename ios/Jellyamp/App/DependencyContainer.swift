@@ -45,7 +45,74 @@ final class DependencyContainer: ObservableObject {
     func bootstrap() async {
         settings = settingsStore.loadSettings()
         if let stored = credentialStore.loadSession() {
+            account = credentialStore.loadAccount()
             await activate(session: stored)
+            // Not awaited: launch (and offline playback) must not wait for
+            // the network.
+            Task { await validateStoredSession() }
+        }
+    }
+
+    // MARK: - Sign-in / session lifecycle
+
+    /// Server name/version and user name for Settings → Account.
+    @Published private(set) var account: JellyfinAccount?
+    /// Shown by onboarding after the app signed the user out by itself
+    /// (token revoked on the server). Cleared by the next successful sign-in.
+    @Published var signedOutNotice: String?
+    private var isRevalidatingSession = false
+
+    /// Unauthenticated session for the onboarding flows (password sign-in,
+    /// Quick Connect) against a server found by `JellyfinServerDiscovery`.
+    func makeSignInSession(server: JellyfinServerInfo) -> JellyfinSession {
+        JellyfinSession(serverURL: server.url, deviceID: Self.persistentDeviceID())
+    }
+
+    /// Persists and activates a session produced by `JellyfinAuthenticator`
+    /// (`signIn` or `signInWithQuickConnect`).
+    func completeSignIn(_ result: JellyfinSignInResult, server: JellyfinServerInfo) async {
+        let account = JellyfinAccount(serverName: server.name, serverVersion: server.version, userName: result.userName)
+        credentialStore.save(session: result.session, account: account)
+        self.account = account
+        signedOutNotice = nil
+        await activate(session: result.session)
+    }
+
+    /// Checks the stored token with the server. Only an explicit rejection
+    /// (HTTP 401) signs the user out; an unreachable server changes nothing,
+    /// so downloaded music stays playable offline.
+    func validateStoredSession() async {
+        guard let current = session, current.isAuthenticated, !isRevalidatingSession else { return }
+        isRevalidatingSession = true
+        defer { isRevalidatingSession = false }
+        switch await JellyfinAuthenticator().validate(session: current) {
+        case .rejected:
+            guard session == current else { return }
+            signedOutNotice = String(localized: "Your Jellyfin server no longer accepts this device's sign-in. Please sign in again.")
+            signOut()
+        case .valid(let userName):
+            // Refresh what Settings → Account shows (server renamed/updated).
+            var refreshed = account ?? JellyfinAccount()
+            if let userName { refreshed.userName = userName }
+            if let info = try? await JellyfinServerDiscovery().probe(url: current.serverURL) {
+                refreshed.serverName = info.name
+                refreshed.serverVersion = info.version
+            }
+            guard session == current, refreshed != account else { return }
+            account = refreshed
+            credentialStore.save(session: current, account: refreshed)
+        case .indeterminate:
+            break
+        }
+    }
+
+    /// Transport for the API clients: any 401 on an authenticated request
+    /// triggers a re-validation, which signs out if the token is really dead.
+    private func makeSessionTransport() -> HTTPTransport {
+        UnauthorizedReportingTransport { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.validateStoredSession()
+            }
         }
     }
 
@@ -61,6 +128,12 @@ final class DependencyContainer: ObservableObject {
     }
 
     func signOut() {
+        if let ending = session, ending.isAuthenticated {
+            // Best effort: revoke the token server-side; never blocks or
+            // fails the local sign-out (which must work offline).
+            Task.detached { await JellyfinAuthenticator().logout(session: ending) }
+        }
+        account = nil
         credentialStore.clear()
         LibraryCache.clearAll()
         session = nil
@@ -79,7 +152,7 @@ final class DependencyContainer: ObservableObject {
         self.session = session
         libraryCache = LibraryCache(scope: session.userID ?? "default")
         downloads = DownloadManager(session: session)
-        library = MusicLibraryAPI(session: session)
+        library = MusicLibraryAPI(session: session, transport: makeSessionTransport())
         // Crossfade-capable engine (mixes two nodes). Swap back to
         // `EnginePlayer(...)` for the AVPlayer streaming engine if needed.
         let engine = AudioEnginePlayer(session: session, settings: settings, stateModel: playerState)
@@ -143,7 +216,7 @@ final class DependencyContainer: ObservableObject {
             sonic = SonicAPIClient(baseURL: url, apiKey: apiKey)
             sonicCapabilities = capabilities
         } else {
-            let fallback = JellyfinFallbackSonicProvider(source: InstantMixAdapter(api: InstantMixAPI(session: session)))
+            let fallback = JellyfinFallbackSonicProvider(source: InstantMixAdapter(api: InstantMixAPI(session: session, transport: makeSessionTransport())))
             sonic = fallback
             sonicCapabilities = fallback.capabilities
         }
