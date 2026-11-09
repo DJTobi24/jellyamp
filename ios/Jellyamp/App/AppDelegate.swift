@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .default)
+            // Activate at launch so the audio engine, prepared during its own
+            // init, sees an active session with a valid hardware output format
+            // (otherwise the engine's first start can fail to render).
+            try session.setActive(true)
         } catch {
             assertionFailure("audio session setup failed: \(error)")
         }
