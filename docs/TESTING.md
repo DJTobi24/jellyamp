@@ -91,14 +91,25 @@ The tests run inside the app on a simulator and put back whatever they
 change (Keychain items, settings).
 
 Audio hardware: the app builds its `AVAudioEngine` when it signs in, and that
-needs an output device (a virtual one will do). On a Mac without any — some
-CI machines — the tests that sign the container in (`DemoModeTests`) and the
-playback smoke test report themselves as **skipped** instead of taking the
-test process down; the smoke test also skips when the engine starts but does
-not render. The two decoder tests in `DemoAudioTests` and everything in
+needs an output device (a virtual one will do; GitHub's macOS runners have
+one). On a Mac without any, the tests that sign the container in
+(`DemoModeTests`) and the playback smoke test report themselves as
+**skipped**; the smoke test also skips when the engine starts but does not
+render. The two decoder tests in `DemoAudioTests` and everything in
 `PersistenceTests` need no audio hardware and always run. A skip therefore
 says something about the machine, not about the app — but check the test log
 for skips before trusting a green run on a new runner image.
+
+The app does not bootstrap itself while it hosts the unit tests
+(`LaunchOptions.isHostingUnitTests`): the tests build their own
+`DependencyContainer`s, and a sign-in or remembered demo mode on the
+simulator must not run a second audio engine next to them.
+
+On CI the simulator is booted before the build and the app is launched once
+in demo mode before the tests (`scripts/ci/warm-up-simulator.sh`). On a
+freshly booted simulator the first process that opens the audio output can
+wait for the audio service until AudioToolbox aborts it ("RPC timeout" in
+`AURemoteIO`); the warm-up takes that hit instead of the test host.
 
 ## 6. UI tests
 
@@ -134,6 +145,12 @@ Rules the tests follow, and new ones should too:
   (`AccessibilityID.Tab`). System alerts and confirmation dialogs cannot
   either; those few buttons are matched by their English label, which is why
   the functional tests pin the app language to English.
+- `tap(_:)` scrolls the element into view first: an element of a scroll view
+  exists while it is off screen or under the tab bar, and a tap sent to its
+  position would hit something else. Elements of *lazy* containers (`List`,
+  lazy stacks) do not exist until they are near the screen — use
+  `scrollToFind(_:)` for those. Since iOS 26 the tab bar shrinks to one icon
+  while content is scrolled down; `open(_:)` / `openLibrary(_:)` expand it.
 - Every wait has an explicit timeout (`waitFor(_:timeout:)`); no `sleep` to
   wait for the app. (Only the screenshot tests pause, so that covers have
   finished loading when the picture is taken.)
@@ -241,12 +258,25 @@ tests fail: `screenshots-<device>` (the PNGs, with failure screenshots under
 `other/`), `ui-test-results-<device>` (the `.xcresult` bundles, open them in
 Xcode) and `xcodebuild-logs-ui-<device>`.
 
-When a UI test fails on CI: the job log names the test and the missing
-identifier; the failure screenshot shows what was on screen instead; the
-`.xcresult` has the full accessibility hierarchy at the moment of failure.
+When a test fails on CI, the job log is meant to be enough
+(`scripts/ci/xcodebuild.sh` prints all of this at the end of the failed step):
 
-If *every* test fails right after launch, the app is probably crashing when
-it signs in to the demo: the audio engine needs an output device, and the
-"Audio output of the runner" step of the job shows whether the machine has
-one. A virtual device (for example BlackHole, set as the default output)
-is enough.
+- the failed tests with their messages, read from the result bundle;
+- for UI tests, the accessibility hierarchy at the moment of the first failed
+  assertion of each test (lines starting with `UI-HIERARCHY|`): which
+  identifiers were on screen instead of the expected one;
+- the crash reports written during the step
+  (`scripts/ci/print-crash-reports.py`): exception, message and backtrace of
+  an app that died — xcodebuild itself only says "Restarting after unexpected
+  exit";
+- the app's own log (`os.Logger`, subsystem `dev.djtobi.Jellyamp`), recorded
+  from the simulator by `scripts/ci/app-log.sh` and printed by the step "App
+  log of the failed test run": which track was loaded, whether the engine
+  started, why a track was skipped.
+
+The artifacts hold the rest: failure screenshots (`screenshots-<device>`,
+folder `other/`), the `.xcresult` bundles and the raw logs.
+
+The "Audio output of the runner" step shows which audio devices the machine
+has. Without any, the engine cannot start: the app then reports the track as
+failed (it does not crash), and the playback tests fail on that.
