@@ -451,6 +451,30 @@ func ownSession(_ session: JellyfinSession) async -> SessionInfo? {
         check(ended?.NowPlayingItem == nil, "session closed with a stop report")
     }
 
+    print("S18 shutdown (sign-out, expired session) silences the engine at once")
+    do {
+        let rig = Rig(session: session, settings: settings(crossfade: 2))
+        rig.player.load(queue: PlayQueue(tracks: [A(3), B(3), C(3)]))
+        rig.player.startSleepTimer(duration: 600)
+        await wait(1.4)   // inside the A → B crossfade: both nodes sound
+        check(rig.playingNodes >= 1 && rig.model.currentTrack != nil, "playing before shutdown")
+        rig.player.shutdown()
+        check(rig.playingNodes == 0, "no node plays any more")
+        check(rig.model.currentTrack == nil && !rig.model.isPlaying && !rig.model.isLoading, "published state is idle")
+        check(rig.model.upNext.isEmpty && rig.model.history.isEmpty, "queue is gone")
+        check(!rig.model.sleepTimerActive, "sleep timer cancelled")
+        await wait(2.2)   // where B would have taken over
+        check(rig.playingNodes == 0 && rig.model.currentTrack == nil, "nothing restarts afterwards")
+        rig.player.play()
+        await wait(0.3)
+        check(rig.playingNodes == 0, "play after shutdown has nothing to play")
+        if liveReports {
+            await wait(0.5)
+            let ended = await ownSession(session)
+            check(ended?.NowPlayingItem == nil, "server session closed by the final stop report")
+        }
+    }
+
     print("\n\(checks - failures)/\(checks) checks passed")
 }
 

@@ -384,8 +384,10 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject, AudioSp
     /// The session ends (sign-out, expired sign-in): silence everything now.
     /// Releasing the player is not enough — a view or a pending task may
     /// keep it alive for a moment, and music must not play on over the
-    /// sign-in screen. Sends the final "stopped" report, clears the queue
-    /// and the published state, and hands the audio session back.
+    /// sign-in screen. Sends the final "stopped" report and clears the queue
+    /// and the published state. The audio session is left as it is: the
+    /// engine of the next sign-in is created in this same process and, like
+    /// the first one, should find the session active (see `AppDelegate`).
     func shutdown() {
         sleepTimer.cancel()
         publishSleepTimer()
@@ -394,8 +396,6 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject, AudioSp
         queue = PlayQueue()
         stopTicker()
         engine.stop()
-        sessionActivated = false
-        try? AVAudioSession.sharedInstance().setActive(false)
     }
 
     func startSleepTimer(duration: TimeInterval?) {
