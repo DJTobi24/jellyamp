@@ -210,6 +210,20 @@ final class OfflineGatedTransportTests: XCTestCase {
         XCTAssertTrue(state.isOffline)
     }
 
+    func testQuietTransportDoesNotDeclareTheServerUnreachable() async {
+        let base = FakeTransport()
+        base.error = URLError(.networkConnectionLost)
+        let state = OfflineStateTracker()
+        let transport = OfflineGatedTransport(base: base, state: state, marksUnreachable: false)
+        _ = try? await transport.send(request)
+        XCTAssertFalse(state.isOffline, "a failed playback report must not flip the app to offline")
+        XCTAssertEqual(base.calls, 1)
+        // …but it still keeps quiet while the app is offline for other reasons.
+        state.setUserEnabled(true)
+        _ = try? await transport.send(request)
+        XCTAssertEqual(base.calls, 1)
+    }
+
     func testCancellationIsNotAConnectivityVerdict() async {
         let base = FakeTransport()
         base.error = URLError(.cancelled)

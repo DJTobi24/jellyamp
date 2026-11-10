@@ -113,15 +113,24 @@ public struct OfflineAwareBrowser: LibraryBrowsing {
 public struct OfflineGatedTransport: HTTPTransport {
     private let base: HTTPTransport
     private let state: OfflineStateTracker
+    private let marksUnreachable: Bool
     private let isConnectivityError: @Sendable (Error) -> Bool
 
+    /// - Parameter marksUnreachable: whether a connectivity failure of a
+    ///   request through this transport declares the server unreachable
+    ///   (which switches the whole app to downloads until the next probe).
+    ///   Pass false for traffic whose failure is weak evidence — background
+    ///   POSTs such as playback reports can fail on a stale connection while
+    ///   the server is fine. Successes are always recorded.
     public init(
         base: HTTPTransport = URLSessionTransport(),
         state: OfflineStateTracker,
+        marksUnreachable: Bool = true,
         isConnectivityError: @escaping @Sendable (Error) -> Bool = OfflineLibrary.isConnectivityError(_:)
     ) {
         self.base = base
         self.state = state
+        self.marksUnreachable = marksUnreachable
         self.isConnectivityError = isConnectivityError
     }
 
@@ -135,7 +144,7 @@ public struct OfflineGatedTransport: HTTPTransport {
             state.recordRequestSuccess()
             return answer
         } catch {
-            if isConnectivityError(error) { state.recordConnectivityFailure() }
+            if marksUnreachable, isConnectivityError(error) { state.recordConnectivityFailure() }
             throw error
         }
     }

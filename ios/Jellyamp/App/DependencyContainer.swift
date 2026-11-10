@@ -190,8 +190,15 @@ final class DependencyContainer: ObservableObject {
     /// (ID lookups, stations, Instant Mix, playback reports): while offline
     /// they fail at once instead of running into a timeout, and their
     /// request outcomes feed the same offline state as the library's.
-    func makeGatedSessionTransport() -> HTTPTransport {
-        OfflineGatedTransport(base: makeSessionTransport(), state: offline.status.tracker)
+    ///
+    /// - Parameter marksUnreachable: false for background traffic whose
+    ///   failure should not switch the app to downloads (playback reports).
+    func makeGatedSessionTransport(marksUnreachable: Bool = true) -> HTTPTransport {
+        OfflineGatedTransport(
+            base: makeSessionTransport(),
+            state: offline.status.tracker,
+            marksUnreachable: marksUnreachable
+        )
     }
 
     /// "Sign Out" chosen by the user: the device forgets the account and
@@ -308,7 +315,7 @@ final class DependencyContainer: ObservableObject {
             session: session,
             settings: settings,
             stateModel: playerState,
-            reportTransport: makeGatedSessionTransport()
+            reportTransport: makeGatedSessionTransport(marksUnreachable: false)
         )
         player = engine
         if let preset = EQPreset.builtIn(id: settings.activeEQPresetID) {
