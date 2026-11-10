@@ -27,6 +27,8 @@ final class DemoModeTests: XCTestCase {
     }
 
     private func enterDemo() async throws {
+        // Signing in builds the audio engine.
+        try AudioOutput.requireUsable()
         await container.enterDemoMode()
         guard container.isSignedIn else {
             throw XCTSkip("The demo server could not start: \(container.signedOutNotice ?? "no reason given")")

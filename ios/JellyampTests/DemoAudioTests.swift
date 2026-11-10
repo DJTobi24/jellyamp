@@ -6,6 +6,27 @@ import JellyfinBackend
 import JellyfinDemo
 @testable import Jellyamp
 
+/// Whether this machine can run an `AVAudioEngine` at all.
+///
+/// A simulator on a Mac without any audio device reports an output format of
+/// 0 Hz / 0 channels. Connecting nodes on such an engine can raise an
+/// Objective-C exception inside AVFAudio, which Swift cannot catch and which
+/// would take the whole test process down — so tests that create the player
+/// (directly, or by signing the container in) ask here first and skip.
+enum AudioOutput {
+    static var isUsable: Bool {
+        let format = AVAudioEngine().outputNode.outputFormat(forBus: 0)
+        return format.sampleRate > 0 && format.channelCount > 0
+    }
+
+    static func requireUsable() throws {
+        try XCTSkipUnless(
+            isUsable,
+            "This simulator has no audio output (output format 0 Hz / 0 channels), so the audio engine cannot be built here."
+        )
+    }
+}
+
 /// The demo tracks through Apple's audio stack. The Linux tests prove the
 /// files are well-formed ADTS; these prove that the system decoders and the
 /// app's streaming player accept them — the part that cannot run on Linux.
@@ -120,6 +141,7 @@ final class DemoAudioTests: XCTestCase {
     /// renders and the clock stands still, which is reported as a skip — it
     /// says nothing about the app.
     func testPlaybackSmoke() async throws {
+        try AudioOutput.requireUsable()
         let tracks = try await demoTracks(count: 3)
         let engine = AudioEnginePlayer(session: session, settings: AppSettings(), stateModel: playerState)
         player = engine

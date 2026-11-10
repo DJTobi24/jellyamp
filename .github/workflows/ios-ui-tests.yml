@@ -53,6 +53,18 @@ jobs:
           xcrun simctl bootstatus "$udid" -b
           xcrun simctl status_bar "$udid" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
             --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
+      - name: Audio output of the runner
+        # The app builds an AVAudioEngine as soon as it is signed in; that
+        # needs an output device, real or virtual. This step only reports
+        # what the runner has — if the app dies with an AVFAudio exception
+        # right after launch, look here first (docs/TESTING.md).
+        continue-on-error: true
+        run: |
+          system_profiler SPAudioDataType || true
+          if command -v SwitchAudioSource >/dev/null 2>&1; then
+            SwitchAudioSource -a || true
+            echo "current output: $(SwitchAudioSource -c -t output || true)"
+          fi
       - name: Build for testing
         id: build
         working-directory: ios

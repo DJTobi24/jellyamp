@@ -88,10 +88,17 @@ xcodebuild test -project Jellyamp.xcodeproj -scheme Jellyamp \
 ```
 
 The tests run inside the app on a simulator and put back whatever they
-change (Keychain items, settings). The playback smoke test needs an audio
-output: on a machine without one (GitHub's runners) the engine does not
-render, and the test reports itself as **skipped** — the two decoder tests
-before it do not depend on audio hardware and still run.
+change (Keychain items, settings).
+
+Audio hardware: the app builds its `AVAudioEngine` when it signs in, and that
+needs an output device (a virtual one will do). On a Mac without any — some
+CI machines — the tests that sign the container in (`DemoModeTests`) and the
+playback smoke test report themselves as **skipped** instead of taking the
+test process down; the smoke test also skips when the engine starts but does
+not render. The two decoder tests in `DemoAudioTests` and everything in
+`PersistenceTests` need no audio hardware and always run. A skip therefore
+says something about the machine, not about the app — but check the test log
+for skips before trusting a green run on a new runner image.
 
 ## 6. UI tests
 
@@ -237,3 +244,9 @@ Xcode) and `xcodebuild-logs-ui-<device>`.
 When a UI test fails on CI: the job log names the test and the missing
 identifier; the failure screenshot shows what was on screen instead; the
 `.xcresult` has the full accessibility hierarchy at the moment of failure.
+
+If *every* test fails right after launch, the app is probably crashing when
+it signs in to the demo: the audio engine needs an output device, and the
+"Audio output of the runner" step of the job shows whether the machine has
+one. A virtual device (for example BlackHole, set as the default output)
+is enough.
