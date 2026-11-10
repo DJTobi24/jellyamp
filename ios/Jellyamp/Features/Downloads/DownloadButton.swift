@@ -138,6 +138,75 @@ private struct DownloadButtonContent: View {
     }
 }
 
+/// Download control for an artist header. An artist's complete track list is
+/// not part of the artist page and can be long, so it is fetched only when
+/// the user asks for the download. Once the artist is pinned the pin knows
+/// its tracks and the regular `DownloadButton` (state, progress, remove)
+/// takes over.
+///
+///     ArtistDownloadButton(artist: artist)
+struct ArtistDownloadButton: View {
+    @EnvironmentObject private var container: DependencyContainer
+    let artist: Artist
+
+    var body: some View {
+        if let downloads = container.downloads {
+            ArtistDownloadButtonContent(downloads: downloads, artist: artist)
+        }
+    }
+}
+
+private struct ArtistDownloadButtonContent: View {
+    @EnvironmentObject private var container: DependencyContainer
+    @ObservedObject var downloads: DownloadManager
+    let artist: Artist
+    @State private var isLoading = false
+
+    var body: some View {
+        let pinned = downloads.index.entries(forPin: DownloadPin.id(kind: .artist, itemID: artist.id)).map(\.track)
+        if !pinned.isEmpty {
+            DownloadButton(artist: artist, tracks: pinned)
+        } else {
+            Button {
+                fetchAndDownload()
+            } label: {
+                ZStack {
+                    if isLoading {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.title2)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading)
+            .accessibilityLabel(Text("Download"))
+        }
+    }
+
+    private func fetchAndDownload() {
+        guard let library = container.library else { return }
+        isLoading = true
+        Task { @MainActor in
+            defer { isLoading = false }
+            do {
+                let tracks = try await library.tracks(byArtist: artist.id)
+                if tracks.isEmpty {
+                    ToastCenter.shared.show(String(localized: "Nothing to download here"), style: .info)
+                } else {
+                    downloads.download(artist: artist, tracks: tracks)
+                }
+            } catch {
+                ToastCenter.shared.showError(String(localized: "Could not load the tracks"), error: error)
+            }
+        }
+    }
+}
+
 /// Small state icon for a track row: nothing when the track is not
 /// downloaded, otherwise queued / progress / downloaded / failed.
 ///
