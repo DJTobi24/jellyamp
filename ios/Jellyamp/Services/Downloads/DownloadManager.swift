@@ -48,6 +48,9 @@ final class DownloadManager: ObservableObject, OfflineCatalogProviding {
     @Published private(set) var isReady = false
 
     let progress = DownloadProgressModel()
+    /// Called when the server refuses a download with 401: the token may be
+    /// dead, and while only downloads are running nothing else would notice.
+    var onUnauthorized: (() -> Void)?
 
     private let session: JellyfinSession
     private let transport: BackgroundDownloadSession
@@ -231,6 +234,27 @@ final class DownloadManager: ObservableObject, OfflineCatalogProviding {
         saveNow()
     }
 
+    /// The session ended but the downloads stay (expired sign-in): stops the
+    /// running transfers and puts them back in the queue. Their requests
+    /// carry the dead token, and so does their resume data; the manager of
+    /// the next session starts them afresh.
+    func suspendTransfers() {
+        retryTask?.cancel()
+        let running = index.orderedEntries.filter { $0.phase == .downloading }.map(\.id)
+        transport.cancel(trackIDs: Set(running))
+        for trackID in running {
+            DownloadStore.deleteResumeData(for: trackID)
+            progress.fractions[trackID] = nil
+            index.requeue(id: trackID)
+        }
+        // Refused transfers are worth another try with the new token.
+        for entry in index.orderedEntries where entry.phase == .failed && entry.failure == .unauthorized {
+            index.retry(id: entry.id)
+        }
+        publishDerivedState()
+        saveNow()
+    }
+
     // MARK: Queue control
 
     func pause(_ trackID: String) {
@@ -362,6 +386,7 @@ final class DownloadManager: ObservableObject, OfflineCatalogProviding {
             guard index.entry(for: trackID) != nil else { return }
             if let resumeData { DownloadStore.saveResumeData(resumeData, for: trackID) }
             let decision = index.markFailed(id: trackID, failure: failure, now: Date(), policy: policy.retry)
+            if failure == .unauthorized { onUnauthorized?() }
             log.error("download failed (\(failure.rawValue, privacy: .public)), \(String(describing: decision), privacy: .public)")
             commit()
             pump()

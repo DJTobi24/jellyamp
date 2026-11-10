@@ -194,13 +194,6 @@ private struct LibraryPresentation: ViewModifier {
                 AddToPlaylistView(request: request)
                     .environmentObject(container)
             }
-            // Older call sites set `container.pendingPlaylistTrack`; route
-            // them into the same sheet.
-            .onChange(of: container.pendingPlaylistTrack) { track in
-                guard let track else { return }
-                container.pendingPlaylistTrack = nil
-                navigator.playlistRequest = PlaylistAddRequest(track: track)
-            }
     }
 }
 

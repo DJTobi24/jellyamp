@@ -18,9 +18,12 @@ final class SystemMediaController {
     private let player: PlayerEngine
     private let playerState: PlayerStateModel
     private let session: JellyfinSession
-    /// Favorites from the lock screen / CarPlay are written with the same
-    /// REST call the in-app heart uses.
-    private let favorites: MusicLibraryAPI
+    /// Favorites go through the app's one favorites path (`FavoritesModel`),
+    /// handed in as closures so this class stays free of app state: reading
+    /// includes changes the server has not echoed back yet, writing updates
+    /// every other heart and rolls back on failure.
+    private let isFavorite: (Track) -> Bool
+    private let setFavorite: (Track, Bool) -> Void
 
     private var cancellables: Set<AnyCancellable> = []
     private var commandTargets: [(command: MPRemoteCommand, target: Any)] = []
@@ -39,11 +42,18 @@ final class SystemMediaController {
 
     private let log = Logger(subsystem: "dev.djtobi.Jellyamp", category: "SystemMedia")
 
-    init(player: PlayerEngine, playerState: PlayerStateModel, session: JellyfinSession) {
+    init(
+        player: PlayerEngine,
+        playerState: PlayerStateModel,
+        session: JellyfinSession,
+        isFavorite: @escaping (Track) -> Bool,
+        setFavorite: @escaping (Track, Bool) -> Void
+    ) {
         self.player = player
         self.playerState = playerState
         self.session = session
-        self.favorites = MusicLibraryAPI(session: session)
+        self.isFavorite = isFavorite
+        self.setFavorite = setFavorite
         artworkCache.countLimit = 24
         configureRemoteCommands()
         observePlayerState()
@@ -126,14 +136,14 @@ final class SystemMediaController {
         register(center.likeCommand) { [weak self] _ in
             guard let self, let track = self.playerState.currentTrack else { return .noActionableNowPlayingItem }
             // "Like" is a toggle in every system UI that shows it.
-            self.setFavorite(!track.isFavorite, for: track)
+            self.setFavorite(track, !self.isFavorite(track))
             return .success
         }
         center.dislikeCommand.localizedTitle = String(localized: "Remove Favorite")
         center.dislikeCommand.localizedShortTitle = String(localized: "Unfavorite")
         register(center.dislikeCommand) { [weak self] _ in
             guard let self, let track = self.playerState.currentTrack else { return .noActionableNowPlayingItem }
-            self.setFavorite(false, for: track)
+            self.setFavorite(track, false)
             return .success
         }
 
@@ -149,27 +159,6 @@ final class SystemMediaController {
         }
     }
 
-    private func setFavorite(_ isFavorite: Bool, for track: Track) {
-        guard track.isFavorite != isFavorite else { return }
-        // Optimistic: flip the UI now, roll back if the server refuses.
-        player.setFavorite(trackID: track.id, isFavorite: isFavorite)
-        let favorites = self.favorites
-        let trackID = track.id
-        Task { [weak self] in
-            do {
-                try await favorites.setFavorite(itemID: trackID, isFavorite: isFavorite)
-            } catch {
-                await self?.revertFavorite(trackID: trackID, to: !isFavorite)
-            }
-        }
-    }
-
-    @MainActor
-    private func revertFavorite(trackID: String, to isFavorite: Bool) {
-        log.error("favorite change failed — reverting")
-        player.setFavorite(trackID: trackID, isFavorite: isFavorite)
-    }
-
     // MARK: - Now-playing info
 
     private func observePlayerState() {
@@ -180,11 +169,14 @@ final class SystemMediaController {
             }
             .store(in: &cancellables)
 
-        // The heart can change without the track changing.
+        // The heart can change without the track changing: a favorite
+        // change republishes the current track (`PlayerEngine.setFavorite`).
         playerState.$currentTrack
-            .map { $0?.isFavorite ?? false }
-            .removeDuplicates()
-            .sink { isFavorite in
+            .sink { [weak self] track in
+                var isFavorite = false
+                if let track {
+                    isFavorite = self?.isFavorite(track) ?? track.isFavorite
+                }
                 MPRemoteCommandCenter.shared().likeCommand.isActive = isFavorite
             }
             .store(in: &cancellables)
