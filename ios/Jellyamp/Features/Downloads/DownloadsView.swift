@@ -49,6 +49,7 @@ private struct DownloadsList: View {
                 systemImage: "arrow.down.circle",
                 description: "Use the ⋯ menu on a track, album or playlist to download it for offline listening."
             )
+            .accessibilityIdentifier(AccessibilityID.Downloads.empty)
         } else {
             List {
                 DownloadsSummarySection(downloads: downloads, songs: catalog.tracksByTitle)

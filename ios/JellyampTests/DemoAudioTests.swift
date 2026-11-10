@@ -15,8 +15,14 @@ import JellyfinDemo
 /// (directly, or by signing the container in) ask here first and skip.
 enum AudioOutput {
     static var isUsable: Bool {
-        let format = AVAudioEngine().outputNode.outputFormat(forBus: 0)
-        return format.sampleRate > 0 && format.channelCount > 0
+        // The engine must outlive the question: a node of an engine that has
+        // already been released (Swift frees a temporary after its last
+        // use, here right after `.outputNode`) is not safe to ask.
+        let engine = AVAudioEngine()
+        return withExtendedLifetime(engine) {
+            let format = engine.outputNode.outputFormat(forBus: 0)
+            return format.sampleRate > 0 && format.channelCount > 0
+        }
     }
 
     static func requireUsable() throws {

@@ -50,8 +50,11 @@ class JellyampUITestCase: XCTestCase {
 
     var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
+    private var didDumpHierarchy = false
+
     override func setUpWithError() throws {
         continueAfterFailure = false
+        didDumpHierarchy = false
         app = XCUIApplication()
         // iPad in landscape shows the sidebar next to the content; in
         // portrait the split view hides it behind a toolbar button.
@@ -61,6 +64,37 @@ class JellyampUITestCase: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         app = nil
+    }
+
+    // MARK: - Failure diagnostics
+
+    /// Prints what was on screen when the first assertion of a test failed.
+    /// On CI the result bundle (with its screenshots) is an artifact nobody
+    /// may be able to open; the accessibility hierarchy in the log says
+    /// which identifiers were there instead of the expected one.
+    /// `scripts/ci/xcodebuild.sh` repeats these lines at the end of the step.
+    override func record(_ issue: XCTIssue) {
+        if !didDumpHierarchy, let app {
+            didDumpHierarchy = true
+            let marker = "UI-HIERARCHY| "
+            print("\(marker)==== \(name): \(issue.compactDescription)")
+            let lines = app.debugDescription.split(separator: "\n", omittingEmptySubsequences: true)
+            var printed = 0
+            for line in lines {
+                // Element lines only; pointers and the legend are noise.
+                guard line.contains("{{") else { continue }
+                let text = line.replacingOccurrences(of: #"0x[0-9a-fA-F]+, "#, with: "", options: .regularExpression)
+                print(marker + text)
+                printed += 1
+                if printed >= 400 {
+                    print("\(marker)… (truncated)")
+                    break
+                }
+            }
+            print("\(marker)==== end")
+            fflush(stdout)
+        }
+        super.record(issue)
     }
 
     // MARK: - Launch
@@ -131,10 +165,10 @@ class JellyampUITestCase: XCTestCase {
         XCTAssertEqual(result, .completed, "\"\(identifier)\" is still on screen after \(Int(timeout)) s", file: file, line: line)
     }
 
-    /// Waits for the element and taps it. Elements inside scroll views are
-    /// scrolled into view by XCUITest.
+    /// Waits for the element, scrolls it into view if necessary and taps it.
     func tap(_ identifier: String, timeout: TimeInterval = 20, file: StaticString = #filePath, line: UInt = #line) {
         let target = waitFor(identifier, timeout: timeout, file: file, line: line)
+        scrollIntoView(target)
         if target.isHittable {
             target.tap()
         } else {
@@ -142,6 +176,70 @@ class JellyampUITestCase: XCTestCase {
             // item in an overflow): tap its centre directly.
             target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
+    }
+
+    // MARK: - Scrolling
+
+    /// Drags the content until `target` can be tapped. An element of a
+    /// (non-lazy) scroll view exists while it is off screen or under the tab
+    /// bar and the mini player, but a tap sent to its position would hit
+    /// whatever is there instead — Home's lower shelves are such elements.
+    /// Does nothing for an element that is on screen but covered, and gives
+    /// up when dragging does not move the element.
+    func scrollIntoView(_ target: XCUIElement) {
+        var attempts = 0
+        while attempts < 12, target.exists, !target.isHittable {
+            let screen = app.frame
+            let frame = target.frame
+            guard screen.width > 0, screen.height > 0, frame.width > 0 else { return }
+            // Navigation bar at the top; tab bar and mini player at the bottom.
+            let top = screen.minY + 110
+            let bottom = screen.maxY - 170
+            let y = min(max((frame.midY - screen.minY) / screen.height, 0.2), 0.8)
+            if frame.midY > bottom {
+                drag(fromX: contentX, y: 0.62, toX: contentX, y: 0.38)
+            } else if frame.midY < top {
+                drag(fromX: contentX, y: 0.38, toX: contentX, y: 0.62)
+            } else if frame.midX > screen.maxX - 24 {
+                drag(fromX: 0.8, y: y, toX: 0.5, y: y)
+            } else if frame.midX < screen.minX + 24 {
+                drag(fromX: 0.5, y: y, toX: 0.8, y: y)
+            } else {
+                return
+            }
+            attempts += 1
+            // Not part of anything that scrolls (a bar, the mini player):
+            // dragging on will not help.
+            if target.exists, target.frame == frame { return }
+        }
+    }
+
+    /// Waits for an element of a lazy container (`List`, lazy stacks and
+    /// grids), which does not exist until it is scrolled near the screen:
+    /// scrolls down step by step until it shows up.
+    @discardableResult
+    func scrollToFind(_ identifier: String, timeout: TimeInterval = 20, maxScrolls: Int = 8, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
+        let found = element(identifier)
+        var scrolls = 0
+        // The first wait also covers the page loading its content.
+        while !found.waitForExistence(timeout: scrolls == 0 ? timeout : 2), scrolls < maxScrolls {
+            drag(fromX: contentX, y: 0.62, toX: contentX, y: 0.38)
+            scrolls += 1
+        }
+        XCTAssertTrue(found.exists, "no element with identifier \"\(identifier)\", also after scrolling down \(scrolls) times", file: file, line: line)
+        return found
+    }
+
+    /// Horizontal position (0…1) inside the content: on iPad the sidebar
+    /// takes the left third of the screen.
+    private var contentX: CGFloat { isPad ? 0.65 : 0.5 }
+
+    /// A slow drag between two points of the screen (normalized), without
+    /// the momentum of a swipe, so the distance scrolled is predictable.
+    private func drag(fromX: CGFloat, y fromY: CGFloat, toX: CGFloat, y toY: CGFloat) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: fromX, dy: fromY))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: toX, dy: toY))
+        start.press(forDuration: 0.05, thenDragTo: end)
     }
 
     // MARK: - Navigation
@@ -191,14 +289,21 @@ class JellyampUITestCase: XCTestCase {
         button.tap()
     }
 
-    /// Taps the back button of the content's navigation bar: the first
-    /// button of the last bar (on iPad the sidebar has a bar of its own,
-    /// which comes first).
+    /// Taps the back button of the content's navigation bar. UIKit gives
+    /// that button the identifier "BackButton" whatever its title is; on
+    /// iPad the sidebar has a navigation bar of its own (whose first button
+    /// toggles the sidebar), so the bar is never chosen by its index: the
+    /// content's bar is the one furthest to the right.
     func goBack() {
         let bars = app.navigationBars
         guard bars.firstMatch.waitForExistence(timeout: 5) else { return }
-        let back = bars.element(boundBy: max(bars.count - 1, 0)).buttons.element(boundBy: 0)
-        if back.waitForExistence(timeout: 5) {
+        let backButtons = bars.buttons.matching(identifier: "BackButton")
+        if backButtons.firstMatch.waitForExistence(timeout: 3) {
+            backButtons.element(boundBy: max(backButtons.count - 1, 0)).tap()
+            return
+        }
+        let content = bars.allElementsBoundByIndex.max { $0.frame.minX < $1.frame.minX }
+        if let back = content?.buttons.element(boundBy: 0), back.waitForExistence(timeout: 5) {
             back.tap()
         }
     }

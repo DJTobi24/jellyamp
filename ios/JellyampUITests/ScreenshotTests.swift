@@ -90,7 +90,11 @@ final class ScreenshotTests: JellyampUITestCase {
         launchForScreenshots()
         openLibrary("artists")
         tap(AccessibilityID.Item.artist(Demo.artist(2)), timeout: 30)
-        waitFor(AccessibilityID.Item.album(Demo.album(3)), timeout: 30)
+        // The header is up as soon as the page is; the popular songs follow
+        // when it has loaded. (The albums below them are off screen on an
+        // iPhone and, the page being a lazy list, not there to wait for.)
+        waitFor(AccessibilityID.Collection.play, timeout: 30)
+        _ = elements(withPrefix: AccessibilityID.Item.track("")).firstMatch.waitForExistence(timeout: 20)
         capture("07-artist")
     }
 

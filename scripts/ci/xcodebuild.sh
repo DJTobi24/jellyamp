@@ -7,7 +7,10 @@
 # build/logs, relative to the working directory) so CI can upload it. The job
 # log shows xcbeautify's condensed output when xcbeautify is installed. When
 # the build fails, every compiler error is printed again from the raw log, so
-# a failure can be diagnosed from the job log alone.
+# a failure can be diagnosed from the job log alone. For a failed test run
+# that also means: the failed tests of the result bundle, and the crash
+# reports written while it ran (a crashed app otherwise only shows up as
+# "Restarting after unexpected exit").
 set -uo pipefail
 
 if [ "$#" -lt 2 ]; then
@@ -33,6 +36,15 @@ if command -v xcbeautify >/dev/null 2>&1; then
     fi
 fi
 
+# The result bundle, if this invocation writes one.
+result_bundle=""
+previous=""
+for argument in "$@"; do
+    if [ "$previous" = "-resultBundlePath" ]; then result_bundle="$argument"; fi
+    previous="$argument"
+done
+started_at="$(date +%s)"
+
 echo "+ xcodebuild $*"
 xcodebuild "$@" 2>&1 | tee "$log" | "${formatter[@]}"
 status="${PIPESTATUS[0]}"
@@ -41,8 +53,36 @@ if [ "$status" -ne 0 ]; then
     echo ""
     echo "xcodebuild exited with status $status. Errors from the raw log ($log):"
     echo "------------------------------------------------------------------------"
-    grep -E -A4 '(error|fatal error): |\*\* [A-Z ]+ FAILED \*\*|^Testing failed:|^The following build commands failed:|^xcodebuild: error' "$log" \
+    grep -E -A4 '(error|[Ff]atal error): |\*\* [A-Z ]+ FAILED \*\*|^Testing failed:|^The following build commands failed:|^xcodebuild: error|Terminating app due to uncaught exception|required condition is false|Thread [0-9]+: (signal|EXC_)|[Cc]rash(ed)?:' "$log" \
         | tail -n 300 || echo "(no error lines found; see the uploaded raw log)"
+    echo "------------------------------------------------------------------------"
+    if grep -q 'UI-HIERARCHY| ' "$log"; then
+        # Printed by the UI tests when an assertion fails (JellyampUITestCase).
+        echo "What was on screen when the UI tests failed:"
+        grep -o 'UI-HIERARCHY| .*' "$log" | cut -c1-400 | tail -n 4000
+        echo "------------------------------------------------------------------------"
+    fi
+    if [ -n "$result_bundle" ] && [ -d "$result_bundle" ]; then
+        echo "Test summary of $result_bundle:"
+        # Xcode 16+; older Xcodes do not know the subcommand and print usage.
+        xcrun xcresulttool get test-results summary --path "$result_bundle" 2>/dev/null \
+            | python3 -c '
+import json, sys
+try:
+    summary = json.load(sys.stdin)
+except ValueError:
+    sys.exit(0)
+for key in ("result", "totalTestCount", "passedTests", "failedTests", "skippedTests", "expectedFailures"):
+    if key in summary:
+        print(f"  {key}: {summary[key]}")
+for failure in summary.get("testFailures", [])[:60]:
+    name = failure.get("testIdentifierString") or failure.get("testName", "?")
+    text = " ".join(str(failure.get("failureText", "")).split())
+    print(f"  FAILED {name}: {text[:600]}")
+' || true
+        echo "------------------------------------------------------------------------"
+    fi
+    python3 "$(dirname "$0")/print-crash-reports.py" --since "$started_at" || true
     echo "------------------------------------------------------------------------"
 fi
 

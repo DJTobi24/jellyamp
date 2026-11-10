@@ -490,6 +490,10 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject, AudioSp
         // A seek while paused stays paused: the buffers are scheduled and the
         // node starts with the next play().
         play(track, source: source, on: active, startOffset: startOffset, startNode: intendsToPlay)
+        if intendsToPlay, !engine.isRunning {
+            handleEngineStartFailure(of: track)
+            return
+        }
         currentPlayMethod = plan.playMethod
         stateModel?.quality = plan.quality
         if intendsToPlay {
@@ -522,6 +526,21 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject, AudioSp
         case .giveUp:
             intendsToPlay = false
         }
+    }
+
+    /// The engine did not start: there is no usable audio output right now
+    /// (no device at all — simulators on machines without audio hardware —
+    /// or the route is in the middle of changing). The track is reported as
+    /// failed and playback stops; it is not skipped, because the next track
+    /// would meet the same engine. The next `play()` tries again from the
+    /// top (nothing is attached).
+    private func handleEngineStartFailure(of track: Track) {
+        log.error("engine not running — cannot start \"\(track.title, privacy: .public)\"")
+        active.source?.stop()
+        active.player.stop()
+        active.source = nil
+        intendsToPlay = false
+        publish(state: .failed(trackID: track.id, message: String(localized: "Couldn't load track.")), track: track)
     }
 
     /// The seek target could not be opened (e.g. a container the stream
@@ -558,7 +577,10 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject, AudioSp
             DispatchQueue.main.async { self?.chainFinished(chain, generation: generation) }
         }
         applyEffectiveVolume()
-        if startNode { chain.player.play() }
+        // Starting a node of an engine that is not running raises an
+        // Objective-C exception (which Swift cannot catch); the caller
+        // reports the failed start instead.
+        if startNode, engine.isRunning { chain.player.play() }
         log.info("play node: engineRunning=\(self.engine.isRunning, privacy: .public) nodePlaying=\(chain.player.isPlaying, privacy: .public) vol=\(chain.player.volume, privacy: .public) mixerOut=\(self.engine.mainMixerNode.outputVolume, privacy: .public)")
     }
 
@@ -705,7 +727,7 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject, AudioSp
             DispatchQueue.main.async { self?.chainFinished(chain, generation: generation) }
         }
         // Paused while the incoming track loaded: play() starts both nodes.
-        if intendsToPlay { chain.player.play() }
+        if intendsToPlay, engine.isRunning { chain.player.play() }
         incomingPlan = plan
         crossfadeStart = monotonicNow
         log.info("crossfade → \"\(next.title, privacy: .public)\" over \(overlap, privacy: .public)s")

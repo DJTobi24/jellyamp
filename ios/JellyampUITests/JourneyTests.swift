@@ -164,8 +164,11 @@ final class LibraryUITests: JellyampUITestCase {
 
         openLibrary("artists")
         tap(AccessibilityID.Item.artist(Demo.artist(2)), timeout: 30)
-        // Neon Estuary's two albums.
-        waitFor(AccessibilityID.Item.album(Demo.album(3)), timeout: 30)
+        // The artist page: Play/Shuffle in its header …
+        waitFor(AccessibilityID.Collection.play, timeout: 30)
+        // … and Neon Estuary's two albums. The page is a lazy list and the
+        // albums come after the popular songs: off screen on an iPhone.
+        scrollToFind(AccessibilityID.Item.album(Demo.album(3)), timeout: 30)
         waitFor(AccessibilityID.Item.album(Demo.album(4)))
 
         openLibrary("playlists")

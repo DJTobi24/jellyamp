@@ -93,6 +93,17 @@ enum LaunchOptions {
     static var resetState: Bool { UserDefaults.standard.bool(forKey: "JellyampResetState") }
     static var disableAnimations: Bool { UserDefaults.standard.bool(forKey: "JellyampDisableAnimations") }
 
+    /// True when this process is the app hosting the unit-test bundle
+    /// (`JellyampTests` is injected into the running app). The tests build
+    /// their own `DependencyContainer`s; the app's shared one then stays
+    /// signed out, so no second audio engine, download session or demo
+    /// server runs next to the ones under test — whatever sign-in or
+    /// remembered demo mode the simulator happens to hold. UI tests are not
+    /// affected: there the app is a process of its own, without this variable.
+    static var isHostingUnitTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     /// Called once, before anything reads settings or builds UI.
     @MainActor
     static func applyAtLaunch() {

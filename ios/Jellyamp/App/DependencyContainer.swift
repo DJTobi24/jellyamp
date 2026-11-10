@@ -98,6 +98,10 @@ final class DependencyContainer: ObservableObject {
                 Task { @MainActor [weak self] in self?.saveSettings() }
             }
         installFavoritesHooks()
+        if LaunchOptions.isHostingUnitTests {
+            // The unit tests sign their own containers in and out.
+            return
+        }
         if DemoMode.shouldStartAtLaunch {
             // Before the Keychain is read: a demo launch must neither use
             // nor disturb a real sign-in.
