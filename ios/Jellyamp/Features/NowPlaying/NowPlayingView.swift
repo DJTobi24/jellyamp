@@ -450,10 +450,6 @@ struct BlurredArtBackground: View {
         Group {
             if let track, !reduceTransparency {
                 ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 400)
-                    // Flatten image, clip shape and placeholder into one
-                    // layer first; blurred separately they left a hard-edged
-                    // square behind the lyrics.
-                    .compositingGroup()
                     .blur(radius: 60)
                     .opacity(0.6)
                     .scaleEffect(1.5)
@@ -461,8 +457,12 @@ struct BlurredArtBackground: View {
                 Color.black
             }
         }
-        .ignoresSafeArea()
+        // Fill the container: otherwise the black backdrop only covers the
+        // artwork's own 400 pt square, which showed as a hard-edged box
+        // wherever the parent is not black itself (the lyrics sheet).
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
+        .ignoresSafeArea()
         .accessibilityHidden(true)
     }
 }
