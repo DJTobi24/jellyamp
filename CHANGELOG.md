@@ -100,6 +100,9 @@ for known limitations.
 **Project**
 - App icon, privacy manifest, App Store listing texts in English and German,
   fastlane lanes, TestFlight workflow, release guide.
+- German localization of the whole app.
+- Demo mode with a built-in sample library ("Try the Demo"), app unit tests,
+  UI tests and screenshot capture on CI simulators.
 - Public privacy policy, support page and landing page (GitHub Pages).
 - Dev Jellyfin rig with a synthetic library; live integration suite for the
   Jellyfin API layer; Linux simulation harness for the audio engine;

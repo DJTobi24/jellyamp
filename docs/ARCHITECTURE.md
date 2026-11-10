@@ -75,8 +75,12 @@ frameworks; the rule is that it stays thin.
 | `Services/SystemMediaController.swift` | Lock screen, remote commands, interruptions, route changes |
 | `DesignSystem/` | `GlassStyle` — the only place iOS 26 APIs are called; see [DESIGN.md](DESIGN.md) |
 
-There is no demo mode: App Review signs in to Jellyfin's public demo server
-(see [RELEASE.md](RELEASE.md)).
+Demo mode (`Support/Demo/DemoMode.swift` + the `JellyfinDemo` package): "Try
+the Demo" on the sign-in screen, or the `-JellyampDemo YES` launch argument,
+signs in to an in-process loopback server that speaks enough of the Jellyfin
+and Sonic APIs to serve a fictional library with generated covers and audio.
+Nothing else in the app knows about it. It backs the UI tests, the
+screenshots and App Review.
 
 ### Companion server (`server/jellyamp_server/`)
 
@@ -238,7 +242,7 @@ database from another schema version is reset automatically.
 | Live Jellyfin suite (`JellyfinLiveTests`, plus the opt-in sign-in and playback-report integration tests) | The whole Jellyfin API layer against a real Jellyfin 10.10.7 with a synthetic library (`scripts/dev-jellyfin/up.sh`); skipped without `JELLYFIN_TEST_*` | Linux: `jellyfin-live` job in `core-linux.yml` |
 | Engine simulation (`scripts/engine-sim/run.sh`) | The control flow of the real `AudioEnginePlayer` compiled against fake audio nodes: skips, seeks, crossfade, failures, sleep timer, reports. Not sound | Linux, on demand (not in CI) |
 | Server tests (`pytest`, `ruff`) | API contract, scanner, store, sonic math, DSP analysis (needs ffmpeg); an opt-in end-to-end test against a real Jellyfin | Linux: `server.yml`, which also builds and starts the Docker image |
-| App target | It compiles, links, archives for Release, and the archive contains what the App Store needs. `JellyampTests` is a placeholder, so there are no app-level unit or UI tests | macOS: `ios.yml` (`macos-26` runner) |
+| App target | It compiles, links, archives for Release, and the archive contains what the App Store needs. `JellyampTests` covers persistence, demo bootstrap and an audio smoke test; `JellyampUITests` drives the main journeys in demo mode (`ios-ui-tests.yml`, on demand) | macOS: `ios.yml` (`macos-26` runner) |
 | Release configuration (`scripts/check-appstore-metadata.py`) | Listing text limits, icon, privacy manifest, release-critical plist keys | Linux: `ios.yml` |
 
 Anything audible — decoding, the fades themselves, AirPlay, interruptions,

@@ -80,9 +80,9 @@ No analytics, no tracking, no third-party SDKs:
 
 ## Screenshots
 
-*Pending.* Screenshots will be added under `docs/screenshots/` (for example
-`now-playing.png`, `library.png`, `home.png`, `downloads.png`,
-`ipad-sidebar.png`). The directory does not exist yet.
+Not committed yet. The UI-test workflow (`ios-ui-tests.yml`) produces them
+in English and German for iPhone and iPad as the `screenshots-*` artifacts;
+see [docs/TESTING.md](docs/TESTING.md).
 
 ## Quick start for users
 

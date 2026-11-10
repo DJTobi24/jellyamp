@@ -113,15 +113,16 @@ Library and offline:
 
 App and platform:
 
-- The UI is English only. The String Catalog is empty; only the App Store
-  listing is translated to German.
+- The UI is in English and German (738 strings, catalog written by hand and
+  checked by `scripts/check-localization.py`); the German has not been read
+  on a device yet. Siri phrases use a legacy `.strings` table.
 - Dark appearance only.
 - CarPlay is off until Apple grants the entitlement; it has only been
   exercised through its unit-tested list builder, never on a head unit.
 - Self-signed HTTPS certificates are rejected.
 - No widgets, no Live Activities, no Apple Watch app.
-- The app target has no unit or UI tests of its own (`JellyampTests` is a
-  placeholder); nothing audible is tested automatically.
+- App unit tests and UI tests run in the built-in demo mode on CI
+  simulators ([TESTING.md](TESTING.md)); nothing has been heard on a device.
 
 Companion server:
 
@@ -135,8 +136,9 @@ Release:
 
 - Not on TestFlight or the App Store yet. The TestFlight workflow has never
   run (it needs the account's secrets).
-- App Store screenshots do not exist yet; the `fastlane screenshots` lane
-  needs a `JellyampUITests` target that has not been written.
+- App Store screenshots are produced by the UI-test workflow (English and
+  German, iPhone and iPad) as CI artifacts; they are not committed and need
+  a visual check before upload.
 
 ## After 1.0
 
@@ -144,12 +146,12 @@ Roughly in order of value:
 
 1. Device verification of the audio engine, then sample-accurate gapless
    (`GaplessPlan` and `SilenceTrimmer` in Core are the prepared pieces).
-2. German localization of the app.
+2. German proof-reading on a device.
 3. CarPlay: request the entitlement, test on a head unit, switch it on.
 4. Mood and style stations; similar tracks and sonic
    similar artists on their screens.
 5. Reliable seeking in MP4/FLAC direct play; resume after a network drop.
 6. Custom EQ presets.
-7. Screenshot UI tests and real tests for the app target.
+7. Wider app-level test coverage (offline mode, CarPlay, intents).
 8. An offline operation queue (favorites, playlist edits).
 9. Ratings, widgets, Live Activities.
