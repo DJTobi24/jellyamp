@@ -10,7 +10,8 @@
 # a failure can be diagnosed from the job log alone. For a failed test run
 # that also means: the failed tests of the result bundle, and the crash
 # reports written while it ran (a crashed app otherwise only shows up as
-# "Restarting after unexpected exit").
+# "Restarting after unexpected exit"). A test run that passed ends with its
+# counts, so skipped tests do not go unnoticed.
 set -uo pipefail
 
 if [ "$#" -lt 2 ]; then
@@ -45,6 +46,26 @@ for argument in "$@"; do
 done
 started_at="$(date +%s)"
 
+# Counts (and failures) of the result bundle. Xcode 16+; older Xcodes do not
+# know the subcommand, then nothing is printed.
+test_summary() {
+    xcrun xcresulttool get test-results summary --path "$result_bundle" 2>/dev/null \
+        | python3 -c '
+import json, sys
+try:
+    summary = json.load(sys.stdin)
+except ValueError:
+    sys.exit(0)
+for key in ("result", "totalTestCount", "passedTests", "failedTests", "skippedTests", "expectedFailures"):
+    if key in summary:
+        print(f"  {key}: {summary[key]}")
+for failure in summary.get("testFailures", [])[:60]:
+    name = failure.get("testIdentifierString") or failure.get("testName", "?")
+    text = " ".join(str(failure.get("failureText", "")).split())
+    print(f"  FAILED {name}: {text[:600]}")
+' || true
+}
+
 echo "+ xcodebuild $*"
 xcodebuild "$@" 2>&1 | tee "$log" | "${formatter[@]}"
 status="${PIPESTATUS[0]}"
@@ -64,26 +85,18 @@ if [ "$status" -ne 0 ]; then
     fi
     if [ -n "$result_bundle" ] && [ -d "$result_bundle" ]; then
         echo "Test summary of $result_bundle:"
-        # Xcode 16+; older Xcodes do not know the subcommand and print usage.
-        xcrun xcresulttool get test-results summary --path "$result_bundle" 2>/dev/null \
-            | python3 -c '
-import json, sys
-try:
-    summary = json.load(sys.stdin)
-except ValueError:
-    sys.exit(0)
-for key in ("result", "totalTestCount", "passedTests", "failedTests", "skippedTests", "expectedFailures"):
-    if key in summary:
-        print(f"  {key}: {summary[key]}")
-for failure in summary.get("testFailures", [])[:60]:
-    name = failure.get("testIdentifierString") or failure.get("testName", "?")
-    text = " ".join(str(failure.get("failureText", "")).split())
-    print(f"  FAILED {name}: {text[:600]}")
-' || true
+        test_summary
         echo "------------------------------------------------------------------------"
     fi
     python3 "$(dirname "$0")/print-crash-reports.py" --since "$started_at" || true
     echo "------------------------------------------------------------------------"
+fi
+
+if [ "$status" -eq 0 ] && [ -n "$result_bundle" ] && [ -d "$result_bundle" ]; then
+    # Also for a green run: tests that skipped themselves (no audio output on
+    # the machine, wrong device family) must be visible, not assumed away.
+    echo "Test summary of $result_bundle:"
+    test_summary
 fi
 
 exit "$status"

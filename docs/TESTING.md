@@ -274,6 +274,10 @@ When a test fails on CI, the job log is meant to be enough
   log of the failed test run": which track was loaded, whether the engine
   started, why a track was skipped.
 
+A step whose tests passed ends with the counts of its result bundle
+(total, passed, failed, skipped), so tests that skipped themselves are
+visible in a green run too.
+
 The artifacts hold the rest: failure screenshots (`screenshots-<device>`,
 folder `other/`), the `.xcresult` bundles and the raw logs.
 
