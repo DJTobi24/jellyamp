@@ -116,10 +116,9 @@ targets:
         # then needs the "SiriKit" capability.
         #   com.apple.developer.siri: true
         #
-        # CarPlay audio: only after Apple granted the CarPlay Audio App
-        # entitlement to the team (docs/CARPLAY.md, docs/RELEASE.md appendix).
-        # Adding it earlier makes automatic signing fail.
-        #   com.apple.developer.carplay-audio: true
+        # CarPlay audio is NOT added here: `CARPLAY_ENABLED=YES xcodegen generate`
+        # merges it from project.carplay.yml once Apple has granted the
+        # entitlement (docs/CARPLAY.md).
     settings:
       groups:
         - version

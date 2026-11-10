@@ -579,11 +579,11 @@ switch; `docs/CARPLAY.md` describes it and how to turn it on.
 Once Apple has approved the request:
 
 1. Enable **CarPlay Audio App** on the App ID (step 2 page → edit).
-2. In `ios/project.yml`, add `com.apple.developer.carplay-audio: true` under
-   `entitlements.properties` (the place is marked) and follow
-   `docs/CARPLAY.md` for the scene configuration.
-3. `xcodegen generate`, archive, and mention CarPlay in the review notes and
-   the description.
+2. Generate the project with the switch on: `CARPLAY_ENABLED=YES xcodegen
+   generate`. That merges `ios/project.carplay.yml` (scene manifest and the
+   `com.apple.developer.carplay-audio` entitlement); do not add the
+   entitlement by hand. Details in `docs/CARPLAY.md`.
+3. Archive, and mention CarPlay in the review notes and the description.
 
 ## Appendix B: Distributing the companion server
 
