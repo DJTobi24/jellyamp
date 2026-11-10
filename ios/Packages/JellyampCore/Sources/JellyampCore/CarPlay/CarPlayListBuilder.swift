@@ -339,19 +339,10 @@ public struct CarPlayListBuilder: Sendable {
         )
     }
 
-    /// "3:07", "1:02:45"; "0:00" for unknown or negative durations.
+    /// "3:07", "1:02:45"; "0:00" for unknown or negative durations — the
+    /// same text the phone's track rows show.
     public static func formatDuration(_ seconds: TimeInterval) -> String {
-        guard seconds.isFinite, seconds > 0 else { return "0:00" }
-        let total = Int(seconds.rounded())
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        let secs = total % 60
-        let paddedSeconds = secs < 10 ? "0\(secs)" : "\(secs)"
-        if hours > 0 {
-            let paddedMinutes = minutes < 10 ? "0\(minutes)" : "\(minutes)"
-            return "\(hours):\(paddedMinutes):\(paddedSeconds)"
-        }
-        return "\(minutes):\(paddedSeconds)"
+        DurationText.clock(seconds)
     }
 
     // MARK: - Sectioning and limits
