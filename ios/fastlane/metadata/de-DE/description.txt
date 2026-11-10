@@ -1,9 +1,9 @@
-Jellyamp ist ein Musikplayer für deinen eigenen Jellyfin-Server. Er spielt deine Sammlung so, wie Alben gedacht sind: ohne Lücken, in gleichmäßiger Lautstärke und mit deinen Covern im Mittelpunkt.
+Jellyamp ist ein Musikplayer für deinen eigenen Jellyfin-Server. Er spielt deine Sammlung so, wie Alben gedacht sind: mit weichen Übergängen, in gleichmäßiger Lautstärke und mit deinen Covern im Mittelpunkt.
 
 Jellyamp ist kein Streamingdienst und bringt keine Musik mit. Du brauchst einen Jellyfin-Server mit einer Musikbibliothek, den dein iPhone oder iPad erreichen kann, zu Hause oder über das Internet.
 
 WIEDERGABE
-• Lückenlose Wiedergabe für Alben und Live-Aufnahmen
+• Weiche Titelübergänge mit einstellbarer Überblendung
 • Überblenden zwischen Titeln, mit einstellbarer Dauer
 • Equalizer mit Voreinstellungen
 • Lautstärkeanpassung, damit leise und laute Titel gleich laut klingen

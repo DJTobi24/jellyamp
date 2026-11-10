@@ -79,8 +79,8 @@ it does not mean "verified by ear on a device".
 - ✅ Loudness fallback for untagged tracks from the sonic server
 - ✅ Last.fm and ListenBrainz scrobbling with an offline queue
   ([SCROBBLING.md](SCROBBLING.md)); Last.fm needs API keys at build time
-- 🟡 Sonic Sage (playlists from a text prompt): implemented in the server and
-  in `SonicClient`; **the app has no screen for it**
+- ✅ Sonic Sage (playlists from a text prompt): Home entry when the server
+  has an Anthropic API key configured; not yet tried against the live API
 - ✅ Smart sync of weekly mixes
 - ✅ iPad layout (sidebar, multitasking, keyboard shortcuts), accessibility
   labels and Reduce Motion support
@@ -146,7 +146,7 @@ Roughly in order of value:
    (`GaplessPlan` and `SilenceTrimmer` in Core are the prepared pieces).
 2. German localization of the app.
 3. CarPlay: request the entitlement, test on a head unit, switch it on.
-4. Sonic Sage screen; mood and style stations; similar tracks and sonic
+4. Mood and style stations; similar tracks and sonic
    similar artists on their screens.
 5. Reliable seeking in MP4/FLAC direct play; resume after a network drop.
 6. Custom EQ presets.

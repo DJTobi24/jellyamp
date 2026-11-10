@@ -121,7 +121,7 @@ consequences, all handled:
 1. Sign in at <https://developer.apple.com/contact/carplay/> as the **Account
    Holder** of the team (other roles cannot submit the form).
 2. Fill in the form:
-   - **App name:** Jellyamp. **Bundle ID:** `dev.djtobi.Jellyamp`.
+   - **App name:** Jellyamp. **Bundle ID:** `dev.djtobi.jellyamp`.
      App Store / TestFlight link if one exists.
    - **Entitlement / category:** *CarPlay Audio App*.
    - **Description** — suggested text:
@@ -141,7 +141,7 @@ consequences, all handled:
 3. Wait for Apple's e-mail. Approval is per team; it typically takes from a
    few days to a few weeks, and Apple may ask follow-up questions.
 4. After approval, in *Certificates, Identifiers & Profiles → Identifiers →*
-   `dev.djtobi.Jellyamp`, enable **CarPlay Audio App** (it appears under the
+   `dev.djtobi.jellyamp`, enable **CarPlay Audio App** (it appears under the
    additional / requested capabilities once granted) and save.
 5. With automatic signing Xcode then fetches a new provisioning profile on
    the next build. With manual signing (CI, fastlane match) regenerate the

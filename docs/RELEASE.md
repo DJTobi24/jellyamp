@@ -343,7 +343,7 @@ sends data only to the user's own Jellyfin server and, if the user turns
 scrobbling on, to the user's own Last.fm or ListenBrainz account. You run
 none of these and receive nothing. There is no analytics and no SDK. The
 privacy manifest (`PrivacyInfo.xcprivacy`) says the same: no tracking, no
-collected data types, and three required-reason APIs (UserDefaults `CA92.1`,
+collected data types, and four required-reason APIs (system boot time `35F9.1`, UserDefaults `CA92.1`,
 file timestamps `C617.1`, disk space `E174.1`).
 
 If you ever add crash reporting or analytics, both the label and the
@@ -493,8 +493,9 @@ Text for App Review:
 > known at build time, so they cannot be listed as exception domains, and
 > NSAllowsLocalNetworking does not cover fully qualified private names.
 > HTTPS is used whenever the user's server address is https://. The app has
-> no web views, no advertising and no third-party SDKs, and it makes no
-> connections to hosts the user did not configure.
+> no advertising and no third-party SDKs. It connects only to the server the
+> user configured, plus Last.fm or ListenBrainz when the user connects one
+> of those accounts for scrobbling.
 
 ### Background audio
 
@@ -599,9 +600,8 @@ but the store description mentions it, so it should be easy to get.
   ```
 
   Set the package to public afterwards (GitHub → Packages → Package
-  settings). A workflow that does this on `v*` tags with
-  `docker/build-push-action` and the built-in `GITHUB_TOKEN`
-  (`permissions: packages: write`) is the natural next step.
+  settings). `.github/workflows/server-image.yml` does the same on
+  `server-v*` tags (and on manual dispatch) with the built-in `GITHUB_TOKEN`.
 - **Licensing:** the slim image (default build) contains only permissively
   licensed dependencies. The analysis image (`--build-arg WITH_ANALYSIS=1`)
   includes Essentia, which is AGPL-3.0, and uses pretrained models that have

@@ -24,4 +24,5 @@ exclude:
   - JELLYFIN-API-NOTES.md
   - RELEASE.md
   - ROADMAP.md
+  - SCROBBLING.md
   - SONIC-API.md

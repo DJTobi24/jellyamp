@@ -31,7 +31,7 @@ To sign in, browse and play, the app sends your Jellyfin server:
 - an access token on every later request;
 - a device name, an app-generated random device ID and the app version, which
   Jellyfin uses to list your sessions;
-- what you browse, search, play, favourite and rate, and your playback
+- what you browse, search, play and favourite, and your playback
   progress, so play counts and "continue listening" work on the server.
 
 This goes to the address you typed in and nowhere else. Whoever runs that
@@ -63,8 +63,9 @@ your account at that service.
   listening.
 
 Signing out removes the stored sign-in. Deleting the app removes everything
-else. Jellyamp does not read your contacts, photos, location, microphone or
-Apple Music library.
+else. Jellyamp does not read your contacts, photo library, location, microphone or
+Apple Music library. If you pick a cover image for a playlist, only that one
+image is uploaded to your Jellyfin server.
 
 ## Apple
 
@@ -126,7 +127,7 @@ Jellyfin-Server abspielt, den du selbst auswählst.
 deinem Server: Benutzername und Passwort (oder einen Quick-Connect-Code) bei
 der Anmeldung, danach ein Zugriffstoken; einen Gerätenamen, eine von der App
 zufällig erzeugte Geräte-ID und die App-Version; außerdem, was du durchsuchst,
-abspielst, favorisierst und bewertest, sowie den Wiedergabefortschritt. Diese
+abspielst, und favorisierst, sowie den Wiedergabefortschritt. Diese
 Daten gehen ausschließlich an die Adresse, die du eingegeben hast. Was dort
 wie lange gespeichert wird, bestimmt, wer den Server betreibt. Bei einer
 `http://`-Adresse ist die Verbindung unverschlüsselt; nutze `https://`, wenn

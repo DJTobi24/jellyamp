@@ -1,1 +1,1 @@
-Your Jellyfin music library, played properly: gapless albums, smooth crossfades, an equalizer, even loudness, offline downloads and synced lyrics.
+Your Jellyfin music library, played properly: smooth crossfades, an equalizer, even loudness, offline downloads and synced lyrics.

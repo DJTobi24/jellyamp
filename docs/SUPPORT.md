@@ -68,7 +68,7 @@ the server; check the server log if only some formats fail.
 Lyrics come from your Jellyfin server. Add `.lrc` files next to your tracks
 or install a lyrics plugin on the server, then rescan the library.
 
-### "Sonic" features are greyed out
+### "Sonic" features are missing
 
 Sonic Adventure, sonically similar tracks and Mixes for You need the optional
 jellyamp-server next to your Jellyfin server. Without it, Jellyamp uses

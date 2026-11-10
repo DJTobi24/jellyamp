@@ -1,1 +1,1 @@
-self-hosted,flac,gapless,crossfade,equalizer,lossless,offline,lyrics,audio,streaming,nas,hifi,album
+self-hosted,flac,radio,crossfade,equalizer,lossless,offline,lyrics,audio,streaming,nas,hifi,album
