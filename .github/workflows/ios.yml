@@ -84,6 +84,17 @@ jobs:
           -derivedDataPath build/DerivedData
           -parallel-testing-enabled NO
           -resultBundlePath build/JellyampTests.xcresult
+      - name: Compile the UI tests
+        # Compiled here so they cannot rot; they *run* in ios-ui-tests.yml
+        # (by hand, or with [ui-tests] in the commit message), because a UI
+        # flake must not block this gate.
+        working-directory: ios
+        run: >-
+          ../scripts/ci/xcodebuild.sh ui-tests-build
+          build-for-testing
+          -project Jellyamp.xcodeproj -scheme JellyampUITests
+          -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
+          -derivedDataPath build/DerivedData
       - name: Upload raw xcodebuild logs
         if: always()
         uses: actions/upload-artifact@v4

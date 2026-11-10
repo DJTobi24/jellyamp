@@ -1,0 +1,38 @@
+# Configuration for fastlane `snapshot` / `capture_screenshots`.
+#
+# `bundle exec fastlane screenshots` normally does NOT go through snapshot:
+# the ScreenshotTests UI tests attach their screenshots to the test result
+# and scripts/ci/screenshots.sh exports them (docs/TESTING.md). This file
+# takes effect once fastlane's SnapshotHelper.swift has been added to
+# ios/JellyampUITests — the lane then switches to capture_screenshots and
+# reads the defaults below (it still picks the device names itself, because
+# they change with every Xcode release).
+
+# The two sets App Store Connect requires for a universal app in 2026:
+# iPhone 6.9" (1320 × 2868) and iPad 13" (2064 × 2752). Smaller sizes are
+# scaled from these.
+devices([
+  "iPhone 17 Pro Max",
+  "iPad Pro 13-inch (M5)"
+])
+
+languages([
+  "en-US",
+  "de-DE"
+])
+
+project("./Jellyamp.xcodeproj")
+scheme("JellyampUITests")
+only_testing(["JellyampUITests/ScreenshotTests"])
+
+output_directory("./fastlane/screenshots")
+clear_previous_screenshots(true)
+
+# 9:41, full battery, full signal.
+override_status_bar(true)
+dark_mode(true)
+
+# One simulator at a time: the tests play audio and download files.
+concurrent_simulators(false)
+stop_after_first_error(false)
+skip_open_summary(true)

@@ -30,6 +30,7 @@ local SPM packages), `server/` (optional FastAPI sonic-analysis companion),
 | Jellyfin API layer, live | `scripts/dev-jellyfin/up.sh`, then in `ios/Packages/JellyfinBackend`: `JELLYFIN_TEST_URL=http://localhost:8096 JELLYFIN_TEST_USER=demo JELLYFIN_TEST_PASSWORD=demo swift test --filter JellyfinLiveTests` (skipped without the variables; in Docker add `--network host` and `-e`; CI: `jellyfin-live` in core-linux.yml). Findings: `docs/JELLYFIN-API-NOTES.md` |
 | Server | `cd server && .venv/bin/pytest -q && .venv/bin/ruff check .` (setup: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`) |
 | App target | macOS only: `xcodegen generate` + xcodebuild (CI: ios.yml on PRs) |
+| App unit tests, UI tests, screenshots | macOS only, all in demo mode (no server): `docs/TESTING.md`. UI tests run in ios-ui-tests.yml — by hand, or put `[ui-tests]` in a commit message |
 
 Notes for sandboxed environments: Docker Hub blob pulls and swift.org may be
 blocked. The Google mirror usually works (start `dockerd` first if needed):
@@ -40,6 +41,16 @@ runs on pushes to `claude/**` branches and on PRs.
 A stale `server/data/jellyamp.sqlite` from older schema versions breaks
 startup; delete it (it's gitignored, there are no migrations pre-1.0).
 
+## Demo mode and UI tests
+
+- `ios/Packages/JellyfinDemo` is a Jellyfin stand-in (fictional library,
+  generated covers and audio, loopback HTTP server). The app signs in to it
+  with "Try the Demo" or `-JellyampDemo YES`; UI tests and screenshots run
+  against it. An API call a screen starts making must be answered by
+  `DemoBackend` too — its tests run the real API clients against it.
+- UI tests find elements by `AccessibilityID` (shared file
+  `ios/Jellyamp/Support/AccessibilityID.swift`), never by label text.
+
 ## Gotchas already hit
 
 - Jellyfin DTOs use PascalCase wire names; a property named `Type` must be
@@ -48,6 +59,10 @@ startup; delete it (it's gitignored, there are no migrations pre-1.0).
   `fields=`.
 - Transcoded `/Audio/{id}/universal` streams are not byte-seekable — seek by
   re-requesting with `startTimeTicks`.
+- `StreamingAudioSource` only schedules packets that arrive with packet
+  descriptions (`handlePackets`), as MP3 and AAC do. Constant-bitrate PCM
+  (WAV, AIFF) is parsed and then dropped, so such a file never starts —
+  which is why the demo audio is AAC, not generated WAV.
 - …but never put `startTimeTicks` on an HLS URL (`main.m3u8`): Jellyfin then
   answers every segment with 400. `StreamURLBuilder.url(_:seekingTo:)` knows.
 - More measured server quirks (playlist move off by one, `ids=` lists hitting

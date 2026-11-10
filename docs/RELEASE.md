@@ -305,10 +305,14 @@ ios/fastlane/screenshots/en-US/01-now-playing-ipad.png
 ios/fastlane/screenshots/de-DE/…
 ```
 
-Automated: `bundle exec fastlane screenshots` runs the screenshot UI tests on
-whichever "Pro Max" iPhone and 13-inch iPad simulators are installed. It
-needs the `JellyampUITests` target; until that exists the lane stops with a
-message.
+Automated: `bundle exec fastlane screenshots` runs the screenshot UI tests
+(`ios/JellyampUITests/ScreenshotTests.swift`) on the "Pro Max" iPhone and the
+13-inch iPad simulator, in English and German, and writes
+`ios/fastlane/screenshots/<language>/NN-name-<iphone|ipad>.png`. The tests use
+the app's built-in demo library (made-up artists, covers drawn in code), so
+no server is needed and nothing copyrighted can end up in a screenshot. The
+same screenshots are an artifact of the "iOS UI tests and screenshots"
+workflow. Details: [TESTING.md](TESTING.md), section 7.
 
 ## Step 11: Upload the listing
 

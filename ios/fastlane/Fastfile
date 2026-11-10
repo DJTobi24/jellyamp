@@ -307,32 +307,58 @@ platform :ios do
     upload_to_app_store(deliver_options)
   end
 
-  desc "Capture App Store screenshots with the UI-test target (6.9\" iPhone, 13\" iPad)"
-  lane :screenshots do
-    # Hook for the screenshot UI tests: they live in ios/JellyampUITests and
-    # use fastlane's SnapshotHelper (`bundle exec fastlane snapshot init`).
-    unless Dir.exist?(ios_path("JellyampUITests"))
-      UI.user_error!(
-        "ios/JellyampUITests does not exist yet. Until the screenshot UI tests are added, " \
-        "take the screenshots by hand (docs/RELEASE.md, step 10)."
-      )
-    end
-
+  desc "Capture App Store screenshots from the demo library (options: devices, languages, keep)"
+  lane :screenshots do |options|
+    # The ScreenshotTests UI-test class (ios/JellyampUITests) drives the app
+    # in demo mode — the built-in sample library with generated covers — so
+    # this needs no server and shows nothing anyone holds rights to.
+    #
+    #   bundle exec fastlane screenshots
+    #   bundle exec fastlane screenshots devices:iphone languages:de-DE keep:true
     generate_project
-    phone = simulator(/^iPhone .*Pro Max/)
-    tablet = simulator(/^iPad Pro 13-inch/)
-    capture_screenshots(
-      project: project_path,
-      scheme: ENV["SCREENSHOT_SCHEME"] || "JellyampUITests",
-      devices: [phone["name"], tablet["name"]],
-      languages: ["en-US", "de-DE"],
-      output_directory: ios_path("fastlane", "screenshots"),
-      clear_previous_screenshots: true,
-      override_status_bar: true,
-      dark_mode: true,
-      skip_open_summary: true,
-      stop_after_first_error: true
-    )
+    families = (options[:devices] || "iphone,ipad").to_s.split(",").map(&:strip).reject(&:empty?)
+    languages = (options[:languages] || "en-US,de-DE").to_s.split(",").map(&:strip).reject(&:empty?)
+    unknown = families - %w[iphone ipad]
+    UI.user_error!("Unknown device family #{unknown.join(', ')} (use iphone and/or ipad)") unless unknown.empty?
+    output = ios_path("fastlane", "screenshots")
+
+    if File.exist?(ios_path("JellyampUITests", "SnapshotHelper.swift"))
+      # fastlane's own helper has been added to the UI-test target
+      # (`bundle exec fastlane snapshot init`, then move SnapshotHelper.swift
+      # into ios/JellyampUITests): let `snapshot` collect the screenshots.
+      # Devices and languages below override the Snapfile.
+      patterns = { "iphone" => /^iPhone .*Pro Max/, "ipad" => /^iPad Pro 13-inch/ }
+      capture_screenshots(
+        project: project_path,
+        scheme: "JellyampUITests",
+        devices: families.map { |family| simulator(patterns.fetch(family))["name"] },
+        languages: languages,
+        output_directory: output,
+        clear_previous_screenshots: ![true, "true"].include?(options[:keep]),
+        # Switches ScreenshotTests over to the helper's snapshot() calls.
+        xcargs: "SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) FASTLANE_SNAPSHOT'"
+      )
+    else
+      # Default: screenshots are test attachments, exported from the result
+      # bundle by scripts/ci/screenshots.sh. No helper file to keep current.
+      FileUtils.rm_f(Dir.glob(File.join(output, "*", "*.png"))) unless [true, "true"].include?(options[:keep])
+      script = File.expand_path(File.join("..", "scripts", "ci", "screenshots.sh"), ios_dir)
+      failed = []
+      families.each do |family|
+        languages.each do |language|
+          UI.header("Screenshots: #{family}, #{language}")
+          failed << "#{family}/#{language}" unless system(script, family, language, output)
+        end
+      end
+      captured = Dir.glob(File.join(output, "*", "*.png")).length
+      UI.success("#{captured} screenshots in #{output}")
+      unless failed.empty?
+        UI.user_error!(
+          "The screenshot tests failed for #{failed.join(', ')}. The logs are in ios/build/logs, " \
+          "the result bundles in ios/build/Screenshots-*.xcresult (docs/TESTING.md)."
+        )
+      end
+    end
   end
 
   after_all do
