@@ -283,8 +283,11 @@ final class SystemMediaController {
     private func loadArtwork(for track: Track) {
         artworkTrackID = track.id
         let key = artworkKey(for: track)
+        // The stored cover of a downloaded album first, so the lock screen
+        // shows artwork offline too (like `ArtworkView` in the app).
         guard artworkCache.object(forKey: key as NSString) == nil,
-              let url = ImageURLBuilder.trackImageURL(track: track, maxWidth: 600, session: session) else { return }
+              let url = DownloadArtworkStore.localURL(itemID: track.albumID ?? track.id)
+                ?? ImageURLBuilder.trackImageURL(track: track, maxWidth: 600, session: session) else { return }
         let trackID = track.id
         Task { [weak self] in
             guard let (data, _) = try? await URLSession.shared.data(from: url),
