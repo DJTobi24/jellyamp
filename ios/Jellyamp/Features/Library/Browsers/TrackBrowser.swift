@@ -68,7 +68,7 @@ struct TrackBrowser: View {
     }
 
     private var showsAlphabet: Bool {
-        sort.showsAlphabetIndex && searchTerm == nil && !container.settings.offlineModeEnabled && !loader.state.isInitialLoading && loader.state.blockingError == nil
+        sort.showsAlphabetIndex && searchTerm == nil && !container.offline.status.isOffline && !loader.state.isInitialLoading && loader.state.blockingError == nil
             && (alphabet.activeLetter != nil || (loader.state.totalCount ?? 0) > 60)
     }
 

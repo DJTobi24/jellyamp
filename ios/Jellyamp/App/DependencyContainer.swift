@@ -47,6 +47,7 @@ final class DependencyContainer: ObservableObject {
     private var playHistory: [String] = []
     private var isRefillingRadio = false
     private var cancellables: Set<AnyCancellable> = []
+    private var settingsObserver: AnyCancellable?
 
     private let credentialStore = KeychainCredentialStore()
     private let settingsStore = UserDefaultsSettingsStore()
@@ -82,6 +83,19 @@ final class DependencyContainer: ObservableObject {
     /// Only through `ensureBootstrapped()`.
     private func bootstrap() async {
         settings = settingsStore.loadSettings()
+        // Every change of `settings` is saved and handed to the engine, the
+        // scrobbler and (through its own observer) the offline coordinator,
+        // whichever screen made it. The settings screens were written by
+        // different slices — some saved on every change, some when they
+        // disappeared — and a toggle changed from a screen of the second
+        // kind did not reach the running engine until then.
+        settingsObserver = $settings
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                // `@Published` emits before the value is stored.
+                Task { @MainActor [weak self] in self?.saveSettings() }
+            }
         installFavoritesHooks()
         guard let stored = credentialStore.loadSession() else { return }
         guard stored.isAuthenticated else {
@@ -449,6 +463,9 @@ final class DependencyContainer: ObservableObject {
     /// The stored jellyamp-server key, for "Test connection" without retyping.
     var storedSonicAPIKey: String? { credentialStore.loadSonicAPIKey() }
 
+    /// Persists and applies the current settings. Runs by itself after every
+    /// change (see `bootstrap`); calling it directly is only needed when the
+    /// effect must not wait for the next main-actor turn.
     func saveSettings() {
         settingsStore.save(settings)
         player?.updateSettings(settings)

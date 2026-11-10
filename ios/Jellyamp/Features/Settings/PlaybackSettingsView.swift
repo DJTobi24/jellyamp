@@ -162,7 +162,7 @@ struct PlaybackSettingsView: View {
         Section {
             Toggle("Autoplay", isOn: $container.settings.autoplayEnabled)
         } footer: {
-            Text("When the queue runs out, keep playing similar music.")
+            Text("When the queue runs out, keep playing similar music. Stations from Home always keep going, whatever this is set to.")
         }
     }
 
