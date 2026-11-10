@@ -7,7 +7,7 @@ import JellyampCore
 ///   bar with the mini player docked above it,
 /// - **regular** (iPad, large iPhones in landscape once enabled): a sidebar
 ///   (Home, Search, the library lists, Downloads, Settings) with the mini
-///   player docked at the bottom of the detail column.
+///   player docked at the bottom of the window.
 ///
 /// Both layouts share `AppNavigator`, so the selected section and the
 /// navigation paths survive rotation and multitasking size changes. The
@@ -111,9 +111,13 @@ private struct SidebarShell: View {
             .navigationTitle("Jellyamp")
         } detail: {
             detail
-                .dockedMiniPlayer()
         }
         .navigationSplitViewStyle(.balanced)
+        // On the split view as a whole, not on the detail column: an inset
+        // attached to the column's content is not shown by
+        // `NavigationSplitView` (iPadOS 26 — the UI tests found the iPad
+        // without any mini player, and with it without a way to Now Playing).
+        .dockedMiniPlayer()
     }
 
     private func sidebarRow(_ title: LocalizedStringKey, systemImage: String, item: SidebarItem) -> some View {
@@ -151,10 +155,10 @@ private struct SidebarShell: View {
 
 extension View {
     /// Docks the mini player at the bottom of this view's safe area: above
-    /// the tab bar on compact layouts, at the bottom of the detail column on
+    /// the tab bar on compact layouts, at the bottom of the window on
     /// regular ones. `MiniPlayerView` renders nothing while idle, so it adds
     /// no inset then. On wide layouts the bar keeps a comfortable width
-    /// instead of stretching across the whole column.
+    /// instead of stretching across the whole window.
     func dockedMiniPlayer() -> some View {
         safeAreaInset(edge: .bottom, spacing: 0) {
             MiniPlayerView()

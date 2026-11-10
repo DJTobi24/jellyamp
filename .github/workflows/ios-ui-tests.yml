@@ -74,7 +74,17 @@ jobs:
           -project Jellyamp.xcodeproj -scheme JellyampUITests
           -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
           -derivedDataPath build/DerivedData
+      - name: Warm up the simulator's audio service
+        # See scripts/ci/warm-up-simulator.sh.
+        if: steps.build.outcome == 'success'
+        run: >-
+          scripts/ci/warm-up-simulator.sh '${{ steps.simulator.outputs.udid }}'
+          ios/build/DerivedData/Build/Products/Debug-iphonesimulator/Jellyamp.app
+      - name: Record the app's log
+        if: steps.build.outcome == 'success'
+        run: scripts/ci/app-log.sh start '${{ steps.simulator.outputs.udid }}' ios/build/logs/app.log
       - name: UI tests (English)
+        id: tests
         working-directory: ios
         # Includes ScreenshotTests, which gives the en-US screenshots.
         run: >-
@@ -85,6 +95,12 @@ jobs:
           -derivedDataPath build/DerivedData
           -parallel-testing-enabled NO
           -resultBundlePath build/UITests-${{ matrix.family }}.xcresult
+      - name: App log of the failed test run
+        if: always() && steps.tests.outcome == 'failure'
+        # Playback and download lines only: the engine logs every buffer.
+        run: |
+          grep -E 'Playback\]|Streaming\]|Downloads\]|DownloadSession\]|rror' ios/build/logs/app.log > ios/build/logs/app-filtered.log || true
+          scripts/ci/app-log.sh show ios/build/logs/app-filtered.log 3000
       - name: Screenshots (German)
         if: always() && steps.build.outcome == 'success'
         working-directory: ios

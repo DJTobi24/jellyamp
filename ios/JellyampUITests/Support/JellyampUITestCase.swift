@@ -74,7 +74,10 @@ class JellyampUITestCase: XCTestCase {
     /// which identifiers were there instead of the expected one.
     /// `scripts/ci/xcodebuild.sh` repeats these lines at the end of the step.
     override func record(_ issue: XCTIssue) {
-        if !didDumpHierarchy, let app {
+        // Failures only: XCTest also records runtime warnings of the app
+        // (hang-risk diagnostics) here, which do not fail a test.
+        let isFailure = issue.type == .assertionFailure || issue.type == .thrownError || issue.type == .uncaughtException
+        if isFailure, !didDumpHierarchy, let app {
             didDumpHierarchy = true
             let marker = "UI-HIERARCHY| "
             print("\(marker)==== \(name): \(issue.compactDescription)")
@@ -284,6 +287,16 @@ class JellyampUITestCase: XCTestCase {
     private func tapTab(_ index: Int, file: StaticString = #filePath, line: UInt = #line) {
         let bar = app.tabBars.firstMatch
         XCTAssertTrue(bar.waitForExistence(timeout: 20), "no tab bar", file: file, line: line)
+        // Since iOS 26 the tab bar shrinks to the selected tab's icon while
+        // the content is scrolled down (`tabBarMinimizesOnScroll`); a tap on
+        // that icon brings the whole bar back.
+        let tabCount = AccessibilityID.Tab.settings + 1
+        if bar.buttons.count < tabCount {
+            bar.buttons.firstMatch.tap()
+            let expanded = NSPredicate(format: "count >= %d", tabCount)
+            let expectation = XCTNSPredicateExpectation(predicate: expanded, object: bar.buttons)
+            _ = XCTWaiter().wait(for: [expectation], timeout: 10)
+        }
         let button = bar.buttons.element(boundBy: index)
         XCTAssertTrue(button.waitForExistence(timeout: 10), "the tab bar has no item \(index)", file: file, line: line)
         button.tap()

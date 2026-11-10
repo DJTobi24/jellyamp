@@ -235,6 +235,16 @@ final class LibraryUITests: JellyampUITestCase {
         let row = waitFor(playlist, timeout: 30)
         row.swipeLeft()
         let delete = app.buttons["Delete"].firstMatch
+        if !delete.waitForExistence(timeout: 5) {
+            // On the iPad simulator the flick of `swipeLeft()` can end up as
+            // a tap that opens the playlist. Return to the list and pull the
+            // row aside with a slow drag instead.
+            if !row.exists { goBack() }
+            let again = waitFor(playlist, timeout: 30)
+            let start = again.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+            let end = again.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
         XCTAssertTrue(delete.waitForExistence(timeout: 5), "swiping the playlist row revealed no Delete action")
         delete.tap()
         let confirm = confirmationButton(labelPrefix: "Delete “")
@@ -331,7 +341,7 @@ final class SidebarUITests: JellyampUITestCase {
         open(.settings)
         waitFor(AccessibilityID.Settings.playback)
 
-        // Playback docks the mini player in the detail column.
+        // Playback docks the mini player at the bottom of the window.
         open(.home)
         startPlayback()
         waitFor(AccessibilityID.Sidebar.home)

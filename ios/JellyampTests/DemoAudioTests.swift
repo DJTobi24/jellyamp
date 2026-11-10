@@ -14,7 +14,9 @@ import JellyfinDemo
 /// would take the whole test process down — so tests that create the player
 /// (directly, or by signing the container in) ask here first and skip.
 enum AudioOutput {
-    static var isUsable: Bool {
+    /// Asked once per test process: every question builds (and tears down)
+    /// an audio output unit, which is a round trip to the audio service.
+    static let isUsable: Bool = {
         // The engine must outlive the question: a node of an engine that has
         // already been released (Swift frees a temporary after its last
         // use, here right after `.outputNode`) is not safe to ask.
@@ -23,7 +25,7 @@ enum AudioOutput {
             let format = engine.outputNode.outputFormat(forBus: 0)
             return format.sampleRate > 0 && format.channelCount > 0
         }
-    }
+    }()
 
     static func requireUsable() throws {
         try XCTSkipUnless(

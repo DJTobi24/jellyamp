@@ -63,11 +63,16 @@ jobs:
       - name: Generate project
         working-directory: ios
         run: xcodegen generate
-      - name: Pick a simulator
+      - name: Pick and boot a simulator
         id: simulator
         # Resolved from what the runner image really has; device names change
-        # with every Xcode release.
-        run: echo "udid=$(python3 scripts/ci/pick-simulator.py)" >> "$GITHUB_OUTPUT"
+        # with every Xcode release. Booted now, so that it has settled by the
+        # time the build is done and the tests start.
+        run: |
+          udid="$(python3 scripts/ci/pick-simulator.py)"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
       - name: Build
         working-directory: ios
         run: >-
@@ -76,6 +81,15 @@ jobs:
           -project Jellyamp.xcodeproj -scheme Jellyamp
           -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
           -derivedDataPath build/DerivedData
+      - name: Warm up the simulator's audio service
+        # The first process to open the audio output on a fresh simulator can
+        # be aborted by the system; let that not be the test host
+        # (scripts/ci/warm-up-simulator.sh).
+        run: >-
+          scripts/ci/warm-up-simulator.sh '${{ steps.simulator.outputs.udid }}'
+          ios/build/DerivedData/Build/Products/Debug-iphonesimulator/Jellyamp.app
+      - name: Record the app's log
+        run: scripts/ci/app-log.sh start '${{ steps.simulator.outputs.udid }}' ios/build/logs/app.log
       - name: Unit tests
         working-directory: ios
         run: >-
@@ -86,6 +100,9 @@ jobs:
           -derivedDataPath build/DerivedData
           -parallel-testing-enabled NO
           -resultBundlePath build/JellyampTests.xcresult
+      - name: App log of the failed test run
+        if: failure()
+        run: scripts/ci/app-log.sh show ios/build/logs/app.log 400
       - name: Compile the UI tests
         # Compiled here so they cannot rot; they *run* in ios-ui-tests.yml
         # (by hand, or with [ui-tests] in the commit message), because a UI
