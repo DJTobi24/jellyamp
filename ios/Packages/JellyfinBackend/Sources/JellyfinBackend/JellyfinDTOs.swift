@@ -49,9 +49,23 @@ struct BaseItemDto: Codable {
     }
 }
 
-struct ItemsResponse: Codable {
+/// The `{ "Items": [...] }` envelope of the list endpoints. Items that do not
+/// decode are dropped instead of failing the page (see `LossyArray`).
+struct ItemsResponse: Decodable {
     var Items: [BaseItemDto]
+    /// Size of the whole result set, for paging; absent on some endpoints.
     var TotalRecordCount: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case Items
+        case TotalRecordCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        Items = try container.decodeIfPresent(LossyArray<BaseItemDto>.self, forKey: .Items)?.elements ?? []
+        TotalRecordCount = try? container.decodeIfPresent(Int.self, forKey: .TotalRecordCount)
+    }
 }
 
 enum DTOMapper {
@@ -93,11 +107,23 @@ enum DTOMapper {
             artistID: dto.AlbumArtists?.first?.Id,
             productionYear: dto.ProductionYear,
             genres: dto.Genres ?? [],
-            trackCount: dto.ChildCount,
+            // `/Items/Latest` reports `ChildCount: 0` for every album; an album
+            // without tracks does not exist, so 0 means "not told".
+            trackCount: dto.ChildCount.flatMap { $0 > 0 ? $0 : nil },
             duration: dto.RunTimeTicks.map { Double($0) / 10_000_000 },
             isFavorite: dto.UserData?.IsFavorite ?? false,
             imageTag: dto.ImageTags?["Primary"],
             normalizationGainDB: dto.NormalizationGain
+        )
+    }
+
+    static func playlist(from dto: BaseItemDto) -> Playlist {
+        Playlist(
+            id: dto.Id,
+            name: dto.Name ?? "",
+            trackCount: dto.ChildCount,
+            duration: dto.RunTimeTicks.map { Double($0) / 10_000_000 },
+            imageTag: dto.ImageTags?["Primary"]
         )
     }
 

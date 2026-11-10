@@ -74,7 +74,7 @@ def test_info_matches_fixture_shape(client):
     assert response.status_code == 200
     body = response.json()
     assert set(body) == set(fixture("info"))
-    assert body["version"] == "1.0"
+    assert body["version"] == "1.1"
     assert body["tracksAnalyzed"] == 4
 
 

@@ -49,11 +49,113 @@ public enum StreamURLBuilder {
         return components.url!
     }
 
-    /// Seek into a transcoded stream: same URL with `startTimeTicks`.
+    /// Original file for an offline download (`/Items/{id}/Download`).
+    ///
+    /// Checked against Jellyfin 10.10.7: `/Items/{id}/Download`,
+    /// `/Items/{id}/File` and `/Audio/{id}/stream?static=true` all return the
+    /// byte-identical original with `Content-Length`, `Accept-Ranges: bytes`
+    /// and `Last-Modified` (no `ETag`); `Range` gives 206 and a stale
+    /// `If-Range` date gives a full 200, so URLSession resume data is safe.
+    /// `/Download` is the one meant for this: it honours the per-user "allow
+    /// media downloads" policy (403 when disabled) and names the file in
+    /// `Content-Disposition`. It needs auth (401 without); the token goes in
+    /// `api_key` like the stream URLs, because a background transfer is
+    /// re-issued by the system and must not depend on request headers
+    /// surviving redirects or reverse proxies. `HEAD` is not supported (405).
+    public static func downloadURL(for trackID: String, session: JellyfinSession) -> URL {
+        var components = URLComponents(
+            url: session.serverURL.appendingPathComponent("Items/\(trackID)/Download"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [URLQueryItem(name: "api_key", value: session.accessToken ?? "")]
+        return components.url!
+    }
+
+    /// Progressive transcode (`/Audio/{id}/stream.{container}`): one HTTP
+    /// response with the re-encoded audio, for players that read a byte stream
+    /// themselves and cannot follow an HLS playlist. Not byte-seekable (no
+    /// `Content-Length`, no ranges); to seek, request it again with another
+    /// `startTime` — the stream then starts at that position.
+    ///
+    /// This is the one place that builds progressive transcode URLs; its
+    /// query is pinned against a real server by `JellyfinLiveTests` (mp3,
+    /// flac, m4a and ogg sources, with and without `startTime`).
+    public static func progressiveTranscodeURL(
+        for trackID: String,
+        codec: String,
+        container: String,
+        maxBitrate: Int,
+        startTime: TimeInterval = 0,
+        playSessionID: String = UUID().uuidString,
+        session: JellyfinSession
+    ) -> URL {
+        var components = URLComponents(
+            url: session.serverURL.appendingPathComponent("Audio/\(trackID)/stream.\(container)"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: session.accessToken ?? ""),
+            URLQueryItem(name: "deviceId", value: session.deviceID),
+            URLQueryItem(name: "playSessionId", value: playSessionID),
+            URLQueryItem(name: "audioCodec", value: codec),
+            URLQueryItem(name: "audioSampleRate", value: "44100"),
+            URLQueryItem(name: "audioBitRate", value: String(maxBitrate)),
+            URLQueryItem(name: "maxAudioChannels", value: "2"),
+        ]
+        let url = components.url!
+        return startTime > 0 ? self.url(url, seekingTo: startTime) : url
+    }
+
+    /// Highest bitrate the MP3 transcode is asked for (the format's ceiling).
+    public static let maxProgressiveBitrate = 320_000
+
+    /// Stream URL for the `AVAudioEngine` player, which parses a byte stream
+    /// itself (`AudioFileStream`) and therefore cannot play HLS playlists.
+    ///
+    /// - `.directPlay` → the raw original file (byte-range seekable, so
+    ///   `startTime` is not part of the URL).
+    /// - `.transcode` → `progressiveTranscodeURL` as MP3, whatever codec the
+    ///   request names (that one is meant for the HLS path): every
+    ///   `AudioFileStream` version syncs to MP3 mid-stream and 320 kbit/s is
+    ///   transparent for a data-saver path. The bitrate is clamped to what
+    ///   MP3 can carry.
+    public static func progressiveURL(
+        for trackID: String,
+        request: StreamRequest,
+        startTime: TimeInterval = 0,
+        playSessionID: String = UUID().uuidString,
+        session: JellyfinSession
+    ) -> URL {
+        switch request {
+        case .directPlay:
+            return url(for: trackID, request: .directPlay, session: session)
+        case .transcode(_, _, let maxBitrate):
+            return progressiveTranscodeURL(
+                for: trackID,
+                codec: "mp3",
+                container: "mp3",
+                maxBitrate: min(max(maxBitrate, 64_000), maxProgressiveBitrate),
+                startTime: startTime,
+                playSessionID: playSessionID,
+                session: session
+            )
+        }
+    }
+
+    /// Same URL with `startTimeTicks`: seeks a *progressive* transcode
+    /// (`progressiveTranscodeURL`), which then starts at that position.
+    ///
+    /// An HLS URL (`url(for:request:)` for `.transcode`) is returned without
+    /// it. HLS is seeked by the player, which fetches the segment it needs
+    /// from the playlist of the whole track; with `startTimeTicks` Jellyfin
+    /// still serves that same playlist but then refuses every segment in it
+    /// (400, "StartTimeTicks is not allowed").
     public static func url(_ base: URL, seekingTo seconds: TimeInterval) -> URL {
         var components = URLComponents(url: base, resolvingAgainstBaseURL: false)!
         var items = (components.queryItems ?? []).filter { $0.name != "startTimeTicks" }
-        items.append(URLQueryItem(name: "startTimeTicks", value: String(Int64(seconds * 10_000_000))))
+        if !base.path.lowercased().hasSuffix(".m3u8") {
+            items.append(URLQueryItem(name: "startTimeTicks", value: String(Int64(seconds * 10_000_000))))
+        }
         components.queryItems = items
         return components.url!
     }
@@ -80,6 +182,13 @@ public enum ImageURLBuilder {
         )!
         components.queryItems = query
         return components.url!
+    }
+
+    /// Cover to store next to downloads. Fixed width (enough for the full-screen
+    /// player at 3x) and no `tag`, so one file
+    /// per item serves every size the UI asks for; images need no auth.
+    public static func offlineArtworkURL(itemID: String, session: JellyfinSession) -> URL {
+        url(itemID: itemID, tag: nil, maxWidth: 1000, session: session)
     }
 
     /// Best image URL for a track: its own primary image, else its album's.

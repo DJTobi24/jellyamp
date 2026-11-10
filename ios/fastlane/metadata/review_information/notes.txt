@@ -1,0 +1,36 @@
+Jellyamp is a music player for Jellyfin, a free, self-hosted media server. The app has no content of its own: users sign in to a Jellyfin server they run themselves and play the music stored there.
+
+DEMO ACCESS (no server of your own needed)
+Easiest: tap "Try the Demo" at the bottom of the first screen. The app opens a built-in sample library (made-up artists, generated artwork and audio) in which everything below can be tried, including downloads, without any server or account. Settings > Account > Sign Out returns to the first screen.
+
+To see the app against a real server: the Jellyfin project runs a public demo server. On the first screen enter:
+  Server:   https://demo.jellyfin.org/stable
+  User:     demo
+  Password: (leave empty)
+then tap Sign In. The password really is blank, which is why the App Store Connect sign-in fields cannot hold this account. The demo server resets itself every hour; if a sign-in fails, please try again a minute later.
+
+WHAT TO TRY
+1. Library tab: open an album, tap a track. Playback starts; the mini player appears above the tab bar; tap it for the full player.
+2. Lock the device: music keeps playing, with controls on the lock screen.
+3. Full player: queue, lyrics (when the track has them), sleep timer, AirPlay.
+4. A track's "..." menu: Instant Mix, Download.
+5. Settings: crossfade, equalizer, loudness leveling.
+
+BACKGROUND AUDIO (UIBackgroundModes: audio)
+The app is an audio player. It keeps playing the user's music when the screen is locked or another app is in front, and publishes Now Playing information and remote commands. It does nothing else in the background.
+
+APP TRANSPORT SECURITY (NSAllowsArbitraryLoads)
+The app connects only to the server address the user types in. Self-hosted Jellyfin servers are typically reached on a home network or a private VPN, where plain HTTP is the norm and public TLS certificates cannot be issued (for example http://nas.lan:8096 or http://192.168.1.20:8096). These host names are chosen by each user and are not known at build time, so they cannot be listed as exception domains, and NSAllowsLocalNetworking alone does not cover fully qualified private names. HTTPS is used whenever the user's address is https://. The app contains no advertising and no third-party SDKs. It connects only to the server the user configured, plus Last.fm or ListenBrainz if the user explicitly connects one of those accounts for scrobbling (Last.fm sign-in uses the system web authentication sheet). The demo server above uses HTTPS.
+
+LOCAL NETWORK PROMPT
+iOS shows the local network permission prompt when a user enters a server on their own network. It does not appear with the demo server.
+
+OPTIONAL FEATURES THAT NEED EXTERNAL ACCOUNTS
+- Scrobbling (Settings) sends played tracks to the user's own Last.fm or ListenBrainz account. Off by default.
+- "Sonic" features need a second self-hosted server (jellyamp-server). Without it the app falls back to Jellyfin's built-in Instant Mix, as it does on the public demo server. The built-in demo simulates such a server so that these features (Mixes for You, Sonic Adventure) can be seen.
+
+OTHER
+- No account creation, no purchases, no subscriptions, no advertising.
+- The app collects no data; privacy label "Data Not Collected".
+- Jellyamp is open source (MIT): https://github.com/DJTobi24/jellyamp
+- It is an independent project, not affiliated with the Jellyfin project.

@@ -3,63 +3,68 @@ import JellyampCore
 
 struct SettingsView: View {
     @EnvironmentObject private var container: DependencyContainer
-    @State private var sonicServerURL = ""
-    @State private var sonicAPIKey = ""
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Playback") {
-                    VStack(alignment: .leading) {
-                        Text("Crossfade: \(Int(container.settings.crossfadeDuration)) s")
-                        Slider(value: $container.settings.crossfadeDuration, in: 0...12, step: 1)
-                    }
-                    Toggle("Loudness Leveling", isOn: $container.settings.loudnessLevelingEnabled)
-                    Toggle("Silence Compression", isOn: $container.settings.silenceCompressionEnabled)
+                Section {
                     NavigationLink {
-                        EqualizerView()
+                        PlaybackSettingsView()
                     } label: {
-                        LabeledContent("Equalizer", value: activePresetName)
+                        Label("Playback", systemImage: "waveform")
                     }
+                    .accessibilityIdentifier(AccessibilityID.Settings.playback)
                 }
 
                 Section {
-                    TextField("http://server:8095", text: $sonicServerURL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("API Key", text: $sonicAPIKey)
-                    LabeledContent("Status") {
-                        if container.sonicCapabilities.supports(.adventure) {
-                            Label("Connected", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        } else {
-                            Text("Jellyfin fallback")
-                                .foregroundStyle(.secondary)
-                        }
+                    NavigationLink {
+                        DownloadSettingsView()
+                    } label: {
+                        Label("Downloads & Offline", systemImage: "arrow.down.circle")
                     }
+                    .accessibilityIdentifier(AccessibilityID.Settings.downloads)
+                }
+
+                Section {
+                    NavigationLink {
+                        SonicSettingsView()
+                    } label: {
+                        LabeledContent("Sonic Server", value: container.isSonicServerActive ? String(localized: "Connected") : String(localized: "Jellyfin fallback"))
+                    }
+                    .accessibilityIdentifier(AccessibilityID.Settings.sonic)
+                    NavigationLink {
+                        ScrobblingSettingsView()
+                    } label: {
+                        Label("Scrobbling", systemImage: "dot.radiowaves.left.and.right")
+                    }
+                    .accessibilityIdentifier(AccessibilityID.Settings.scrobbling)
                 } header: {
-                    Text("Sonic Server")
-                } footer: {
-                    Text("Optional jellyamp-server for Sonic Adventure, Mixes for You and true sonic similarity. Without it, Jellyamp uses Jellyfin's built-in Instant Mix.")
+                    Text("Services")
                 }
 
                 Section("Account") {
-                    Button("Sign Out", role: .destructive) {
-                        container.signOut()
+                    NavigationLink {
+                        AccountSettingsView()
+                    } label: {
+                        AccountSettingsRow()
                     }
+                    .accessibilityIdentifier(AccessibilityID.Settings.account)
+                }
+
+                Section {
+                    NavigationLink {
+                        AboutView()
+                    } label: {
+                        Label("About", systemImage: "info.circle")
+                    }
+                    .accessibilityIdentifier(AccessibilityID.Settings.about)
                 }
             }
             .navigationTitle("Settings")
             .onDisappear {
                 container.saveSettings()
-                Task { await container.rewireSonicProvider() }
             }
         }
-    }
-
-    private var activePresetName: String {
-        EQPreset.builtIn(id: container.settings.activeEQPresetID)?.name ?? "Off"
     }
 }
 
@@ -82,7 +87,7 @@ struct EqualizerView: View {
                         apply(preset)
                     } label: {
                         HStack {
-                            Text(preset.name).foregroundStyle(.primary)
+                            Text(preset.localizedName).foregroundStyle(.primary)
                             Spacer()
                             if preset.id == selectedID {
                                 Image(systemName: "checkmark").foregroundStyle(.tint)

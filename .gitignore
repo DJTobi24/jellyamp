@@ -10,6 +10,25 @@ xcuserdata/
 *.ipa
 *.dSYM.zip
 *.dSYM
+*.xcarchive
+*.xcresult
+
+# Per-developer signing settings (team ID, optional Last.fm keys); see
+# ios/Config/Signing.xcconfig.example
+ios/Config/Signing.xcconfig
+
+# Signing material must never be committed
+*.p8
+*.p12
+*.mobileprovision
+
+# fastlane / release build output
+ios/build/
+ios/fastlane/report.xml
+ios/fastlane/README.md
+ios/fastlane/test_output/
+ios/vendor/bundle/
+ios/.bundle/
 
 # Swift Package Manager
 .build/
@@ -37,3 +56,6 @@ server/jellyamp_server/analysis/models/*.pb
 .idea/
 .vscode/
 *.swp
+
+# Claude Code agent worktrees
+.claude/worktrees/

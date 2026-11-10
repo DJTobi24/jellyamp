@@ -40,18 +40,53 @@ public protocol MusicLibraryProviding: Sendable {
     func setFavorite(itemID: String, isFavorite: Bool) async throws
 }
 
-/// Fields we must request explicitly — Jellyfin omits media-source and genre
-/// data from list responses by default.
-let defaultFields = "MediaSources,Genres,DateCreated,ParentId,Overview"
+/// Fields we must request explicitly — Jellyfin omits media-source, genre and
+/// child-count data from list responses by default (albums and playlists come
+/// back without `ChildCount`, i.e. without a track count, otherwise).
+let defaultFields = "MediaSources,Genres,DateCreated,ParentId,Overview,ChildCount"
+
+/// Finds the moves that turn a playlist into the intended order using only
+/// what every Jellyfin move endpoint does right — on a correct server and on
+/// 10.10, whose `Move/{newIndex}` behaves like this (n entries):
+///
+/// - moving up (newIndex < old index): lands at `max(newIndex, 1)` — correct
+///   unless the target is the top, which nothing can be moved to;
+/// - moving down: lands at `min(newIndex + 1, n - 1)` — one too low unless
+///   the target is the end;
+/// - `newIndex >= n`: 500.
+///
+/// Reliable everywhere, therefore: moving up to an index ≥ 1, and moving the
+/// top entry out of the way.
+enum PlaylistReorder {
+    /// One intended move needs at most three calls on 10.10; one more for slack.
+    static let maxMoves = 4
+
+    /// The next move towards `desired`, or nil when `current` already is it
+    /// (or is no longer the same set of entries, in which case there is no
+    /// telling what to do).
+    static func nextMove(current: [String], desired: [String]) -> (entryID: String, index: Int)? {
+        guard current != desired, current.count == desired.count, Set(current) == Set(desired),
+              let index = current.indices.first(where: { current[$0] != desired[$0] })
+        else { return nil }
+        if index == 0, current.count > 1, current[1] == desired[0], let home = desired.firstIndex(of: current[0]) {
+            // The right entry is second and cannot be raised: send the wrong
+            // top entry down to where it belongs instead.
+            return (current[0], home)
+        }
+        // Everything above `index` is in place, so this entry is below it.
+        return (desired[index], index)
+    }
+}
 
 public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     private let session: JellyfinSession
     private let transport: HTTPTransport
-    private let decoder = JSONDecoder()
+    private let client: JellyfinClient
 
     public init(session: JellyfinSession, transport: HTTPTransport = URLSessionTransport()) {
         self.session = session
         self.transport = transport
+        self.client = JellyfinClient(session: session, transport: transport)
     }
 
     public func albums(sortBy: String = "SortName", sortOrder: String = "Ascending", startIndex: Int = 0, limit: Int = 100) async throws -> [Album] {
@@ -63,42 +98,51 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "startIndex", value: String(startIndex)),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
-        return response.Items.map(DTOMapper.album(from:))
+        return response.map(DTOMapper.album(from:))
     }
 
     public func album(id: String) async throws -> Album? {
-        let response = try await items(query: [
-            URLQueryItem(name: "ids", value: id),
-            URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
-        ])
-        return response.Items.first.map(DTOMapper.album(from:))
+        try await item(id: id, type: "MusicAlbum").map(DTOMapper.album(from:))
+    }
+
+    /// One item by ID, or nil if the server has no such item of that type.
+    /// The answer is checked against the request: Jellyfin silently drops an
+    /// `ids` value it cannot parse and then answers the *unfiltered* query —
+    /// the user's root folders ("Music", "Playlists").
+    private func item(id: String, type: String) async throws -> BaseItemDto? {
+        guard !id.isEmpty else { return nil }
+        let response = try await items(query: [URLQueryItem(name: "ids", value: id)])
+        return response.first { JellyfinClient.sameID($0.Id, id) && $0.Type == type }
     }
 
     public func tracks(inAlbum albumID: String) async throws -> [Track] {
+        // `albumIds`, not `parentId`: the parent of a track is its *folder*,
+        // which is the album only as long as the album is one flat folder
+        // (multi-disc rips keep "CD 1/", "CD 2/" below it), and an unknown
+        // `parentId` is answered with 400 where this is an empty list.
         let response = try await items(query: [
-            URLQueryItem(name: "parentId", value: albumID),
+            URLQueryItem(name: "albumIds", value: albumID),
             URLQueryItem(name: "includeItemTypes", value: "Audio"),
-            URLQueryItem(name: "sortBy", value: "ParentIndexNumber,IndexNumber"),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "ParentIndexNumber,IndexNumber,SortName"),
         ])
-        return response.Items.map(DTOMapper.track(from:))
+        return response.map(DTOMapper.track(from:))
     }
 
     public func artists(sortBy: String = "SortName", startIndex: Int = 0, limit: Int = 100) async throws -> [Artist] {
-        let request = session.request(path: "Artists/AlbumArtists", query: [
+        // Through `items` for `fields=`: without it the artists carry no genres.
+        let response = try await items(path: "Artists/AlbumArtists", query: [
             URLQueryItem(name: "sortBy", value: sortBy),
             URLQueryItem(name: "startIndex", value: String(startIndex)),
             URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
         ])
-        let response: ItemsResponse = try await execute(request)
-        return response.Items.map(DTOMapper.artist(from:))
+        return response.map(DTOMapper.artist(from:))
     }
 
     /// Full artist item including the biography (`Overview`), which the list
     /// endpoints don't return.
     public func artist(id: String) async throws -> Artist? {
-        let response = try await items(query: [URLQueryItem(name: "ids", value: id)])
-        return response.Items.first.map(DTOMapper.artist(from:))
+        try await item(id: id, type: "MusicArtist").map(DTOMapper.artist(from:))
     }
 
     public func albums(byArtist artistID: String) async throws -> [Album] {
@@ -109,21 +153,22 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "sortBy", value: "ProductionYear,SortName"),
             URLQueryItem(name: "sortOrder", value: "Descending"),
         ])
-        return response.Items.map(DTOMapper.album(from:))
+        return response.map(DTOMapper.album(from:))
     }
 
     /// Albums the artist appears on without being the album artist (guest spots,
-    /// compilations). `contributingArtistIds` minus the artist's own albums.
+    /// compilations). That is exactly what `contributingArtistIds` means on the
+    /// server. Do not combine it with `excludeArtistIds` for the same artist:
+    /// that excludes every album the artist has a track on, i.e. everything.
     public func appearsOnAlbums(artistID: String) async throws -> [Album] {
         let response = try await items(query: [
             URLQueryItem(name: "contributingArtistIds", value: artistID),
-            URLQueryItem(name: "excludeArtistIds", value: artistID),
             URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
             URLQueryItem(name: "recursive", value: "true"),
             URLQueryItem(name: "sortBy", value: "ProductionYear,SortName"),
             URLQueryItem(name: "sortOrder", value: "Descending"),
         ])
-        return response.Items.map(DTOMapper.album(from:))
+        return response.map(DTOMapper.album(from:))
     }
 
     /// The artist's most-played tracks (Jellyfin sorts by `PlayCount`).
@@ -136,17 +181,17 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "sortOrder", value: "Descending"),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
-        return response.Items.map(DTOMapper.track(from:))
+        return response.map(DTOMapper.track(from:))
     }
 
     /// Similar artists via Jellyfin's metadata similarity (`/Items/{id}/Similar`).
     public func similarArtists(artistID: String, limit: Int = 12) async throws -> [Artist] {
-        let request = session.request(path: "Items/\(artistID)/Similar", query: [
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
+        let response = try await items(path: "Items/\(artistID)/Similar", query: [
             URLQueryItem(name: "limit", value: String(limit)),
         ])
-        let response: ItemsResponse = try await execute(request)
-        return response.Items.map(DTOMapper.artist(from:))
+        return response
+            .filter { $0.Type == "MusicArtist" && !JellyfinClient.sameID($0.Id, artistID) }
+            .map(DTOMapper.artist(from:))
     }
 
     /// All tracks crediting this artist. Uses `artistIds` (any credit, not just
@@ -159,64 +204,99 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "recursive", value: "true"),
             URLQueryItem(name: "sortBy", value: "Album,ParentIndexNumber,IndexNumber"),
         ])
-        return response.Items.map(DTOMapper.track(from:))
+        return response.map(DTOMapper.track(from:))
     }
 
     /// Creates a playlist seeded with the given tracks; returns its new ID.
     @discardableResult
     public func createPlaylist(name: String, itemIDs: [String]) async throws -> String {
         struct CreateResponse: Decodable { let Id: String }
-        let request = session.request(
-            path: "Playlists",
-            query: [
-                URLQueryItem(name: "name", value: name),
-                URLQueryItem(name: "userId", value: session.userID ?? ""),
-                URLQueryItem(name: "ids", value: itemIDs.joined(separator: ",")),
-                URLQueryItem(name: "mediaType", value: "Audio"),
-            ],
-            method: "POST"
-        )
-        let response: CreateResponse = try await execute(request)
+        // As a JSON body (`CreatePlaylistDto`), not as query parameters: a
+        // queue saved as a playlist easily has more IDs than fit in a URL.
+        var payload: [String: Any] = ["Name": name, "Ids": itemIDs, "MediaType": "Audio"]
+        if let userID = session.userID {
+            payload["UserId"] = userID
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let request = client.request(path: "Playlists", method: "POST", body: body)
+        let response: CreateResponse = try await client.decode(from: request)
         return response.Id
     }
 
-    /// Appends tracks to an existing playlist.
+    /// Appends tracks to an existing playlist. Jellyfin 10.10 keeps a track
+    /// only once per playlist: IDs that are already in it are ignored.
     public func addToPlaylist(playlistID: String, itemIDs: [String]) async throws {
-        let request = session.request(
-            path: "Playlists/\(playlistID)/Items",
-            query: [
-                URLQueryItem(name: "ids", value: itemIDs.joined(separator: ",")),
-                URLQueryItem(name: "userId", value: session.userID ?? ""),
-            ],
-            method: "POST"
-        )
-        let (_, response) = try await transport.send(request)
-        guard (200..<300).contains(response.statusCode) else {
-            throw JellyfinError.serverError(status: response.statusCode)
+        // This endpoint only takes the IDs in the query string.
+        for batch in JellyfinClient.batches(of: itemIDs) {
+            try await sendExpectingSuccess(client.request(
+                path: "Playlists/\(playlistID)/Items",
+                query: [URLQueryItem(name: "ids", value: batch.joined(separator: ","))] + client.userQuery,
+                method: "POST"
+            ))
         }
     }
 
     public func removeFromPlaylist(playlistID: String, entryIDs: [String]) async throws {
-        try await sendExpectingSuccess(session.request(
-            path: "Playlists/\(playlistID)/Items",
-            query: [
-                URLQueryItem(name: "entryIds", value: entryIDs.joined(separator: ",")),
-                URLQueryItem(name: "userId", value: session.userID ?? ""),
-            ],
-            method: "DELETE"
-        ))
+        for batch in JellyfinClient.batches(of: entryIDs) {
+            try await sendExpectingSuccess(client.request(
+                path: "Playlists/\(playlistID)/Items",
+                query: [URLQueryItem(name: "entryIds", value: batch.joined(separator: ","))],
+                method: "DELETE"
+            ))
+        }
     }
 
+    /// Moves a playlist entry so that it ends up at position `toIndex` (0-based,
+    /// counted in the playlist as it is after the move; clamped to its end).
+    ///
+    /// Jellyfin's move endpoint cannot be trusted with that on its own. On
+    /// 10.10 an entry moved down lands one slot too low, nothing can be moved
+    /// to the top (it lands second), and an index past the end is a 500. So
+    /// every move is read back and followed by corrective moves until the
+    /// order is the intended one (`PlaylistReorder`): one call on a server
+    /// that moves correctly, at most three on 10.10.
     public func movePlaylistItem(playlistID: String, entryID: String, toIndex: Int) async throws {
-        try await sendExpectingSuccess(session.request(
-            path: "Playlists/\(playlistID)/Items/\(entryID)/Move/\(toIndex)",
-            method: "POST"
-        ))
+        var current = try await playlistEntries(playlistID)
+        guard let from = current.firstIndex(where: { JellyfinClient.sameID($0.entryID, entryID) }) else {
+            throw JellyfinError.notFound
+        }
+        let target = min(max(toIndex, 0), current.count - 1)
+        guard from != target else { return }
+        var desired = current
+        desired.insert(desired.remove(at: from), at: target)
+
+        var move: (entryID: String, index: Int)? = (current[from].entryID, target)
+        var attempts = 0
+        while let step = move, attempts < PlaylistReorder.maxMoves {
+            attempts += 1
+            try await sendExpectingSuccess(client.request(
+                path: "Playlists/\(playlistID)/Items/\(step.entryID)/Move/\(step.index)",
+                method: "POST"
+            ))
+            current = try await playlistEntries(playlistID)
+            move = PlaylistReorder.nextMove(current: current.map(\.entryID), desired: desired.map(\.entryID))
+        }
+        guard move != nil else { return }
+        // A server that moves in a way we do not know: write the order
+        // outright. Only as the last resort — on 10.10 this queues a metadata
+        // refresh of the playlist that silently undoes whatever changes it in
+        // the next moment (another reorder, a removal, a rename).
+        let body = try JSONSerialization.data(withJSONObject: ["Ids": desired.map(\.itemID)])
+        try await sendExpectingSuccess(client.request(path: "Playlists/\(playlistID)", method: "POST", body: body))
+    }
+
+    private func playlistEntries(_ playlistID: String) async throws -> [(entryID: String, itemID: String)] {
+        let entries = try await items(path: "Playlists/\(playlistID)/Items", query: [
+            URLQueryItem(name: "fields", value: "ParentId"),
+            URLQueryItem(name: "enableUserData", value: "false"),
+            URLQueryItem(name: "enableImages", value: "false"),
+        ])
+        return entries.map { ($0.PlaylistItemId ?? $0.Id, $0.Id) }
     }
 
     public func renamePlaylist(playlistID: String, name: String) async throws {
         let body = try JSONSerialization.data(withJSONObject: ["Name": name])
-        try await sendExpectingSuccess(session.request(
+        try await sendExpectingSuccess(client.request(
             path: "Playlists/\(playlistID)",
             method: "POST",
             body: body
@@ -224,14 +304,15 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     public func deletePlaylist(playlistID: String) async throws {
-        try await sendExpectingSuccess(session.request(path: "Items/\(playlistID)", method: "DELETE"))
+        try await sendExpectingSuccess(client.request(path: "Items/\(playlistID)", method: "DELETE"))
     }
 
     public func setPlaylistImage(playlistID: String, jpeg: Data) async throws {
-        let url = session.serverURL.appendingPathComponent("Items/\(playlistID)/Images/Primary")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(session.authorizationHeader, forHTTPHeaderField: "Authorization")
+        var request = client.request(
+            path: "Items/\(playlistID)/Images/Primary",
+            method: "POST",
+            timeout: JellyfinClient.uploadTimeout
+        )
         request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
         // Jellyfin reads the image upload body as base64.
         request.httpBody = jpeg.base64EncodedData()
@@ -239,10 +320,7 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     private func sendExpectingSuccess(_ request: URLRequest) async throws {
-        let (_, response) = try await transport.send(request)
-        guard (200..<300).contains(response.statusCode) else {
-            throw JellyfinError.serverError(status: response.statusCode)
-        }
+        try await client.send(request)
     }
 
     /// The user's saved ("favorited") albums.
@@ -254,18 +332,17 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "sortBy", value: "SortName"),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
-        return response.Items.map(DTOMapper.album(from:))
+        return response.map(DTOMapper.album(from:))
     }
 
     /// The user's followed ("favorited") album-artists.
     public func favoriteArtists(limit: Int = 500) async throws -> [Artist] {
-        let request = session.request(path: "Artists/AlbumArtists", query: [
+        let response = try await items(path: "Artists/AlbumArtists", query: [
             URLQueryItem(name: "isFavorite", value: "true"),
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
+            URLQueryItem(name: "sortBy", value: "SortName"),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
-        let response: ItemsResponse = try await execute(request)
-        return response.Items.map(DTOMapper.artist(from:))
+        return response.map(DTOMapper.artist(from:))
     }
 
     /// All tracks in a music genre.
@@ -276,7 +353,7 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "recursive", value: "true"),
             URLQueryItem(name: "sortBy", value: "Album,ParentIndexNumber,IndexNumber"),
         ])
-        return response.Items.map(DTOMapper.track(from:))
+        return response.map(DTOMapper.track(from:))
     }
 
     /// The user's favorited ("liked") tracks.
@@ -288,7 +365,7 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "sortBy", value: "SortName"),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
-        return response.Items.map(DTOMapper.track(from:))
+        return response.map(DTOMapper.track(from:))
     }
 
     /// Synced or plain lyrics for a track (Jellyfin 10.9+), or nil if none.
@@ -299,37 +376,25 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     public func genres() async throws -> [Genre] {
         // `/MusicGenres` is the music-specific endpoint; the generic `/Genres`
         // with includeItemTypes=Audio returns nothing on Jellyfin.
-        let request = session.request(path: "MusicGenres", query: [
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
+        let request = client.request(path: "MusicGenres", query: [
             URLQueryItem(name: "sortBy", value: "SortName"),
-        ])
-        let response: ItemsResponse = try await execute(request)
-        return response.Items.map { Genre(id: $0.Id, name: $0.Name ?? "") }
+        ] + client.userQuery)
+        let response = try await execute(request).Items
+        return response.map { Genre(id: $0.Id, name: $0.Name ?? "") }
     }
 
     public func playlists() async throws -> [Playlist] {
         let response = try await items(query: [
             URLQueryItem(name: "includeItemTypes", value: "Playlist"),
             URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: "SortName"),
         ])
-        return response.Items.map {
-            Playlist(
-                id: $0.Id,
-                name: $0.Name ?? "",
-                trackCount: $0.ChildCount,
-                duration: $0.RunTimeTicks.map { Double($0) / 10_000_000 },
-                imageTag: $0.ImageTags?["Primary"]
-            )
-        }
+        return response.map(DTOMapper.playlist(from:))
     }
 
     public func tracks(inPlaylist playlistID: String) async throws -> [Track] {
-        let request = session.request(path: "Playlists/\(playlistID)/Items", query: [
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
-            URLQueryItem(name: "fields", value: defaultFields),
-        ])
-        let response: ItemsResponse = try await execute(request)
-        return response.Items.map { dto in
+        let response = try await items(path: "Playlists/\(playlistID)/Items", query: [])
+        return response.map { dto in
             var track = DTOMapper.track(from: dto)
             track.playlistEntryID = dto.PlaylistItemId
             return track
@@ -337,14 +402,15 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
     }
 
     public func recentlyAddedAlbums(limit: Int = 20) async throws -> [Album] {
-        let request = session.request(path: "Items/Latest", query: [
+        let request = client.request(path: "Items/Latest", query: [
             URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
             URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "userId", value: session.userID ?? ""),
-        ])
+            // Like `/Items`, it leaves genres out unless asked.
+            URLQueryItem(name: "fields", value: defaultFields),
+        ] + client.userQuery)
         // /Items/Latest returns a bare array, not an ItemsResponse envelope.
-        let dtos: [BaseItemDto] = try await execute(request)
-        return dtos.map(DTOMapper.album(from:))
+        let dtos: LossyArray<BaseItemDto> = try await client.decode(from: request)
+        return dtos.elements.map(DTOMapper.album(from:))
     }
 
     public func recentlyPlayedTracks(limit: Int = 20) async throws -> [Track] {
@@ -356,88 +422,84 @@ public final class MusicLibraryAPI: MusicLibraryProviding, @unchecked Sendable {
             URLQueryItem(name: "filters", value: "IsPlayed"),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
-        return response.Items.map(DTOMapper.track(from:))
+        return response.map(DTOMapper.track(from:))
     }
 
     public func search(query: String, limit: Int = 20) async throws -> (tracks: [Track], albums: [Album], artists: [Artist], playlists: [Playlist]) {
-        func searchQuery(type: String) -> [URLQueryItem] {
-            [
-                URLQueryItem(name: "searchTerm", value: query),
-                URLQueryItem(name: "includeItemTypes", value: type),
-                URLQueryItem(name: "recursive", value: "true"),
-                URLQueryItem(name: "limit", value: String(limit)),
-            ]
-        }
-        let trackItems = try await items(query: searchQuery(type: "Audio"))
-        let albumItems = try await items(query: searchQuery(type: "MusicAlbum"))
-        let artistItems = try await items(query: searchQuery(type: "MusicArtist"))
-        let playlistItems = try await items(query: searchQuery(type: "Playlist"))
-        return (
-            tracks: trackItems.Items.map(DTOMapper.track(from:)),
-            albums: albumItems.Items.map(DTOMapper.album(from:)),
-            artists: artistItems.Items.map(DTOMapper.artist(from:)),
-            playlists: playlistItems.Items.map {
-                Playlist(
-                    id: $0.Id,
-                    name: $0.Name ?? "",
-                    trackCount: $0.ChildCount,
-                    duration: $0.RunTimeTicks.map { Double($0) / 10_000_000 },
-                    imageTag: $0.ImageTags?["Primary"]
-                )
+        // The server matches the term as typed: a trailing space (which the
+        // keyboard adds after every autocompleted word) finds nothing.
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return ([], [], [], []) }
+        // One request per kind so each kind gets its own `limit`; they are
+        // independent, so they run side by side. Every request runs to its
+        // end and hands back a `Result`: with `async let`, the first failure
+        // (say, a 401 on all four) cancels its siblings mid-flight, and
+        // cancelling an in-flight request can hang URLSession on Linux.
+        let kinds = ["Audio", "MusicAlbum", "MusicArtist", "Playlist"]
+        let results = await withTaskGroup(of: (Int, Result<[BaseItemDto], Error>).self) { group in
+            for (index, kind) in kinds.enumerated() {
+                group.addTask {
+                    do {
+                        return (index, .success(try await self.items(query: [
+                            URLQueryItem(name: "searchTerm", value: term),
+                            URLQueryItem(name: "includeItemTypes", value: kind),
+                            URLQueryItem(name: "recursive", value: "true"),
+                            URLQueryItem(name: "limit", value: String(limit)),
+                        ])))
+                    } catch {
+                        return (index, .failure(error))
+                    }
+                }
             }
+            var collected = [Result<[BaseItemDto], Error>](repeating: .success([]), count: kinds.count)
+            for await (index, result) in group {
+                collected[index] = result
+            }
+            return collected
+        }
+        return (
+            tracks: try results[0].get().map(DTOMapper.track(from:)),
+            albums: try results[1].get().map(DTOMapper.album(from:)),
+            artists: try results[2].get().map(DTOMapper.artist(from:)),
+            playlists: try results[3].get().map(DTOMapper.playlist(from:))
         )
     }
 
     public func tracks(byIDs ids: [String]) async throws -> [Track] {
-        guard !ids.isEmpty else { return [] }
-        let response = try await items(query: [
-            URLQueryItem(name: "ids", value: ids.joined(separator: ",")),
-        ])
-        // Preserve requested order — Jellyfin returns library order.
-        let byID = Dictionary(uniqueKeysWithValues: response.Items.map { ($0.Id, $0) })
+        // Each distinct ID once, in URL-length-safe batches (a few hundred
+        // comma-joined GUIDs are a 414), then back into the requested order:
+        // duplicates stay duplicates, unknown IDs drop out.
+        var seen = Set<String>()
+        let unique = ids.filter { seen.insert($0).inserted }
+        let response = try await client.items(ids: unique)
+        let byID = Dictionary(response.map { ($0.Id, $0) }, uniquingKeysWith: { first, _ in first })
         return ids.compactMap { byID[$0] }.map(DTOMapper.track(from:))
     }
 
     public func setFavorite(itemID: String, isFavorite: Bool) async throws {
         guard let userID = session.userID else { throw JellyfinError.notAuthenticated }
-        let request = session.request(
-            path: "Users/\(userID)/FavoriteItems/\(itemID)",
-            method: isFavorite ? "POST" : "DELETE"
-        )
-        let (_, response) = try await transport.send(request)
-        guard (200..<300).contains(response.statusCode) else {
-            throw JellyfinError.serverError(status: response.statusCode)
+        let method = isFavorite ? "POST" : "DELETE"
+        do {
+            // The documented route since 10.9.
+            try await sendExpectingSuccess(client.request(
+                path: "UserFavoriteItems/\(itemID)", query: client.userQuery, method: method))
+        } catch JellyfinError.notFound {
+            // 404 is "no such item" on 10.9+ and "no such route" before; the
+            // legacy route (undocumented but still served by 10.10) tells
+            // them apart: it works on old servers and is a 404 for a missing
+            // item everywhere.
+            try await sendExpectingSuccess(client.request(
+                path: "Users/\(userID)/FavoriteItems/\(itemID)", method: method))
         }
     }
 
     // MARK: - Plumbing
 
-    private func items(query: [URLQueryItem]) async throws -> ItemsResponse {
-        var fullQuery = query
-        if !query.contains(where: { $0.name == "fields" }) {
-            fullQuery.append(URLQueryItem(name: "fields", value: defaultFields))
-        }
-        if let userID = session.userID {
-            fullQuery.append(URLQueryItem(name: "userId", value: userID))
-        }
-        return try await execute(session.request(path: "Items", query: fullQuery))
+    private func items(path: String = "Items", query: [URLQueryItem]) async throws -> [BaseItemDto] {
+        try await client.items(path: path, query: query)
     }
 
-    private func execute<T: Decodable>(_ request: URLRequest) async throws -> T {
-        let (data, response) = try await transport.send(request)
-        switch response.statusCode {
-        case 200..<300:
-            do {
-                return try decoder.decode(T.self, from: data)
-            } catch {
-                throw JellyfinError.invalidResponse
-            }
-        case 401:
-            throw JellyfinError.unauthorized
-        case 404:
-            throw JellyfinError.notFound
-        default:
-            throw JellyfinError.serverError(status: response.statusCode)
-        }
+    private func execute(_ request: URLRequest) async throws -> ItemsResponse {
+        try await client.decode(from: request)
     }
 }

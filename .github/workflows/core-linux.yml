@@ -11,6 +11,8 @@ on:
   pull_request:
     paths:
       - "ios/Packages/**"
+      - "scripts/dev-jellyfin/**"
+      - ".github/workflows/core-linux.yml"
 
 jobs:
   test:
@@ -19,12 +21,49 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [JellyampCore, SonicClient, JellyfinBackend]
+        package: [JellyampCore, SonicClient, JellyfinBackend, JellyfinDemo]
     steps:
       - uses: actions/checkout@v4
       - name: Test ${{ matrix.package }}
         working-directory: ios/Packages/${{ matrix.package }}
         run: swift test
+
+  # JellyfinBackend against a real Jellyfin server holding the synthetic
+  # library (docs/JELLYFIN-API-NOTES.md, "Live tests").
+  #
+  # Not a `services:` container on purpose: a service starts before the
+  # checkout, when the library it has to mount does not exist yet. up.sh
+  # generates the library first and then starts the server itself. (For a
+  # server that is started some other way, up.sh takes JELLYFIN_DEV_URL.)
+  jellyfin-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg (generates the test library)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Start Jellyfin 10.10.7 with the synthetic library
+        run: scripts/dev-jellyfin/up.sh
+      - name: Live integration tests
+        shell: bash  # for pipefail
+        run: |
+          docker run --rm --network host \
+            -e JELLYFIN_TEST_URL=http://localhost:8096 \
+            -e JELLYFIN_TEST_USER=demo \
+            -e JELLYFIN_TEST_PASSWORD=demo \
+            -v "$PWD":/w -w /w/ios/Packages/JellyfinBackend \
+            swift:6.0 swift test --filter JellyfinLiveTests 2>&1 | tee live-tests.log
+          # The tests skip themselves when they are not told about a server;
+          # here that would be a green run that tested nothing.
+          if ! grep -q "Executed [1-9][0-9]* tests" live-tests.log || grep -q "skipped" live-tests.log; then
+            echo "::error::the live tests did not run (skipped or filtered out)"
+            exit 1
+          fi
+      - name: Jellyfin log
+        if: failure()
+        run: docker logs --tail 400 jellyamp-dev-jellyfin || true
 
   fixtures-in-sync:
     runs-on: ubuntu-latest

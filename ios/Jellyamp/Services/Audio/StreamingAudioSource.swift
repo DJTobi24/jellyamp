@@ -1,7 +1,9 @@
 import Foundation
+import Accelerate
 import AVFoundation
 import AudioToolbox
 import OSLog
+import JellyampCore
 
 /// True progressive streaming decoder. Pulls bytes (over HTTP, or from a local
 /// file), parses them with **AudioFileStream**, decodes compressed packets to
@@ -44,6 +46,8 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
     private weak var node: AVAudioPlayerNode?
     private var onEnd: (() -> Void)?
     private var isRunning = false
+    /// `stop()` was called: whatever the network still delivers is ignored.
+    private var stopped = false
     private var networkDone = false
     private var pendingFrames: AVAudioFrameCount = 0
     private var targetFrames: AVAudioFrameCount = 0
@@ -51,12 +55,29 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
     private var formatContinuation: CheckedContinuation<Bool, Never>?
     private var resolvedFormat = false
 
-    private init(url: URL, startTime: TimeInterval, duration: TimeInterval, fileTypeHint: AudioFileTypeID, outputFormat: AVAudioFormat) {
+    // Silence compression (opt-in). nil → every decoded buffer is scheduled,
+    // exactly as without the feature. Confined to `queue` like the rest.
+    private var silenceGate: SilenceGate?
+    private let skippedLock = NSLock()
+    private var skippedSecondsStorage: TimeInterval = 0
+
+    /// Audio dropped by silence compression so far. The player node's clock
+    /// only counts what was scheduled, so the engine adds this to show the
+    /// position in the file. Safe to read from any thread.
+    var skippedSeconds: TimeInterval {
+        skippedLock.lock()
+        defer { skippedLock.unlock() }
+        return skippedSecondsStorage
+    }
+
+    private init(url: URL, startTime: TimeInterval, duration: TimeInterval, fileTypeHint: AudioFileTypeID,
+                 outputFormat: AVAudioFormat, silenceGate: SilenceGate?) {
         self.url = url
         self.startTime = startTime
         self.duration = duration
         self.fileTypeHint = fileTypeHint
         self.format = outputFormat
+        self.silenceGate = silenceGate
         self.targetFrames = AVAudioFrameCount(outputFormat.sampleRate * 3)
         super.init()
     }
@@ -64,10 +85,15 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
     /// Opens the stream and waits until the converter is ready (header parsed).
     /// Decoded audio is converted to `outputFormat` (the fixed engine format).
     /// Returns nil if no decodable audio appears or it times out.
+    ///
+    /// - Parameter silenceGate: when set, buffers it rejects (long stretches
+    ///   of pure silence) are dropped instead of scheduled.
     static func make(url: URL, startTime: TimeInterval, duration: TimeInterval,
-                     fileTypeHint: AudioFileTypeID = 0, outputFormat: AVAudioFormat) async -> StreamingAudioSource? {
+                     fileTypeHint: AudioFileTypeID = 0, outputFormat: AVAudioFormat,
+                     silenceGate: SilenceGate? = nil) async -> StreamingAudioSource? {
         let source = StreamingAudioSource(url: url, startTime: startTime, duration: duration,
-                                          fileTypeHint: fileTypeHint, outputFormat: outputFormat)
+                                          fileTypeHint: fileTypeHint, outputFormat: outputFormat,
+                                          silenceGate: silenceGate)
         let ready = await source.open()
         if !ready { source.stop() }
         return ready ? source : nil
@@ -221,6 +247,10 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
 
     private func decodeAndSchedule() {
         guard isRunning, resolvedFormat, let converter, let node else { return }
+        var droppedSilence = false
+        // A dropped buffer leaves no completion callback behind to re-check
+        // for the end of the stream, so do it here when anything was dropped.
+        defer { if droppedSilence { finishIfDrained() } }
         while pendingFrames < targetFrames, !packets.isEmpty {
             let framesPerBuffer: AVAudioFrameCount = 8192
             guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: framesPerBuffer) else { return }
@@ -247,6 +277,10 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
                 }
                 log.info("buffer \(self.peakLogCount, privacy: .public): \(packetCount, privacy: .public) frames, peak \(peak, privacy: .public)")
             }
+            if silenceGate != nil, !passesSilenceGate(buffer) {
+                droppedSilence = true
+                continue
+            }
             let frames = buffer.frameLength
             pendingFrames += frames
             node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
@@ -260,6 +294,31 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
             }
             if status != noErr && packetCount == 0 { return }
         }
+    }
+
+    /// Silence compression: asks the gate whether this fully decoded buffer
+    /// should play. Only whole buffers are dropped (never spliced), and the
+    /// dropped time is published for the engine's clock.
+    private func passesSilenceGate(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard var gate = silenceGate, buffer.frameLength > 0, format.sampleRate > 0 else { return true }
+        // Unknown sample layout → treat as audible rather than risk dropping music.
+        var peak: Float = 1
+        if let channels = buffer.floatChannelData {
+            peak = 0
+            for channel in 0..<Int(format.channelCount) {
+                var channelPeak: Float = 0
+                vDSP_maxmgv(channels[channel], 1, &channelPeak, vDSP_Length(buffer.frameLength))
+                peak = max(peak, channelPeak)
+            }
+        }
+        let keep = gate.shouldSchedule(peak: peak, duration: Double(buffer.frameLength) / format.sampleRate)
+        silenceGate = gate
+        if !keep {
+            skippedLock.lock()
+            skippedSecondsStorage = gate.skippedDuration
+            skippedLock.unlock()
+        }
+        return keep
     }
 
     /// Supplies one compressed packet to the converter. Must keep the packet's
@@ -313,6 +372,7 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
         queue.async { [weak self] in
             guard let self else { return }
             self.isRunning = false
+            self.stopped = true
             self.onEnd = nil
             self.dataTask?.cancel()
             self.session?.invalidateAndCancel()
@@ -348,7 +408,13 @@ extension StreamingAudioSource: URLSessionDataDelegate {
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         queue.async { [weak self] in
-            guard let self, self.isRunning || !self.resolvedFormat else { return }
+            // Every byte counts until `stop()`. In particular the bytes
+            // that arrive after the header was parsed but before
+            // `beginScheduling` (the player starts the source from the main
+            // thread, a moment later): dropping those cut a hole into the
+            // track, and on a fast server — where the whole file arrives in
+            // that moment — ended it after the first few seconds.
+            guard let self, !self.stopped else { return }
             if !self.loggedFirstBytes {
                 self.loggedFirstBytes = true
                 self.log.info("stream first bytes: \(data.count, privacy: .public)")

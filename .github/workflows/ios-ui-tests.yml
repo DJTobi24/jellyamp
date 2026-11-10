@@ -1,0 +1,166 @@
+name: iOS UI tests and screenshots
+
+# UI tests drive the app in demo mode (the built-in sample library), on an
+# iPhone and an iPad simulator, and capture the App Store screenshots in
+# English and German on the way. They are slow and — like all UI tests —
+# can flake on a loaded runner, so they are not part of the normal gate:
+#
+#   - run them by hand (Actions > "iOS UI tests and screenshots" > Run workflow), or
+#   - put [ui-tests] into the message of a commit pushed to a claude/** branch.
+#
+# Every run uploads the result bundles and the exported PNGs, also when
+# tests fail (failure screenshots are in the "other" folder). docs/TESTING.md.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**"]
+
+concurrency:
+  group: ios-ui-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ui-tests:
+    name: UI tests (${{ matrix.family }})
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ui-tests]')
+    # macos-26: the iOS 26 SDK the app is built with (see ios.yml).
+    runs-on: macos-26
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [iphone, ipad]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Pick and boot a simulator
+        id: simulator
+        # The App Store screenshot sizes (6.9" iPhone, 13" iPad) when the
+        # image has them, so the screenshots of this run can be uploaded as
+        # they are.
+        run: |
+          udid="$(python3 scripts/ci/pick-simulator.py --family ${{ matrix.family }} --screenshots)"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
+            --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
+      - name: Audio output of the runner
+        # The app builds an AVAudioEngine as soon as it is signed in; that
+        # needs an output device, real or virtual. This step only reports
+        # what the runner has — if the app dies with an AVFAudio exception
+        # right after launch, look here first (docs/TESTING.md).
+        continue-on-error: true
+        run: |
+          system_profiler SPAudioDataType || true
+          if command -v SwitchAudioSource >/dev/null 2>&1; then
+            SwitchAudioSource -a || true
+            echo "current output: $(SwitchAudioSource -c -t output || true)"
+          fi
+      - name: Build for testing
+        id: build
+        working-directory: ios
+        run: >-
+          ../scripts/ci/xcodebuild.sh ui-build
+          build-for-testing
+          -project Jellyamp.xcodeproj -scheme JellyampUITests
+          -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
+          -derivedDataPath build/DerivedData
+      - name: Warm up the simulator's audio service
+        # See scripts/ci/warm-up-simulator.sh.
+        if: steps.build.outcome == 'success'
+        run: >-
+          scripts/ci/warm-up-simulator.sh '${{ steps.simulator.outputs.udid }}'
+          ios/build/DerivedData/Build/Products/Debug-iphonesimulator/Jellyamp.app
+      - name: Record the app's log
+        if: steps.build.outcome == 'success'
+        run: scripts/ci/app-log.sh start '${{ steps.simulator.outputs.udid }}' ios/build/logs/app.log
+      - name: UI tests (English)
+        id: tests
+        working-directory: ios
+        # Includes ScreenshotTests, which gives the en-US screenshots.
+        run: >-
+          ../scripts/ci/xcodebuild.sh ui-tests
+          test-without-building
+          -project Jellyamp.xcodeproj -scheme JellyampUITests
+          -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
+          -derivedDataPath build/DerivedData
+          -parallel-testing-enabled NO
+          -resultBundlePath build/UITests-${{ matrix.family }}.xcresult
+      - name: App log of the failed test run
+        if: always() && steps.tests.outcome == 'failure'
+        # Playback and download lines only: the engine logs every buffer.
+        run: |
+          grep -E 'Playback\]|Streaming\]|Downloads\]|DownloadSession\]|rror' ios/build/logs/app.log > ios/build/logs/app-filtered.log || true
+          scripts/ci/app-log.sh show ios/build/logs/app-filtered.log 3000
+      - name: Screenshots (German)
+        if: always() && steps.build.outcome == 'success'
+        working-directory: ios
+        env:
+          # Reaches the test runner as SCREENSHOT_LANGUAGE.
+          TEST_RUNNER_SCREENSHOT_LANGUAGE: de-DE
+        run: >-
+          ../scripts/ci/xcodebuild.sh ui-screenshots-de
+          test-without-building
+          -project Jellyamp.xcodeproj -scheme JellyampUITests
+          -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
+          -derivedDataPath build/DerivedData
+          -only-testing:JellyampUITests/ScreenshotTests
+          -parallel-testing-enabled NO
+          -resultBundlePath build/Screenshots-de-${{ matrix.family }}.xcresult
+      - name: Export screenshots and attachments
+        if: always()
+        run: |
+          python3 scripts/ci/export-xcresult-attachments.py \
+            ios/build/UITests-${{ matrix.family }}.xcresult ios/build/screenshots/en-US --suffix ${{ matrix.family }}
+          python3 scripts/ci/export-xcresult-attachments.py \
+            ios/build/Screenshots-de-${{ matrix.family }}.xcresult ios/build/screenshots/de-DE --suffix ${{ matrix.family }}
+          find ios/build/screenshots -name '*.png' | sort || true
+      # Review aid for people (and agents) who cannot download artifacts:
+      # with [print-shots] in the commit message, small JPEG previews of the
+      # screenshots are written to the job log as base64 between @@SHOT and
+      # @@END markers.
+      - name: Print screenshot previews
+        if: always() && contains(github.event.head_commit.message, '[print-shots]')
+        run: |
+          find ios/build/screenshots -name '*.png' | sort | while read -r shot; do
+            sips -Z 720 -s format jpeg -s formatOptions 50 "$shot" --out /tmp/preview.jpg >/dev/null 2>&1 || continue
+            echo "@@SHOT ${shot#ios/build/screenshots/}"
+            base64 -i /tmp/preview.jpg | tr -d '\n'
+            echo
+            echo "@@END"
+          done
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.family }}
+          path: ios/build/screenshots
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload result bundles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results-${{ matrix.family }}
+          path: |
+            ios/build/UITests-${{ matrix.family }}.xcresult
+            ios/build/Screenshots-de-${{ matrix.family }}.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload raw xcodebuild logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-logs-ui-${{ matrix.family }}
+          path: ios/build/logs
+          if-no-files-found: ignore
+          retention-days: 14

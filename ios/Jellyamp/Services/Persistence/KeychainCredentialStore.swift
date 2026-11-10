@@ -6,9 +6,22 @@ import JellyfinBackend
 final class KeychainCredentialStore {
     private let service = "dev.djtobi.jellyamp"
 
-    func save(session: JellyfinSession) {
-        guard let data = try? JSONEncoder().encode(StoredSession(from: session)) else { return }
+    /// Stores the session together with what Settings → Account displays
+    /// (server name/version, user name) so that screen works offline too.
+    func save(session: JellyfinSession, account: JellyfinAccount? = nil) {
+        var stored = StoredSession(from: session)
+        stored.serverName = account?.serverName
+        stored.serverVersion = account?.serverVersion
+        stored.userName = account?.userName
+        guard let data = try? JSONEncoder().encode(stored) else { return }
         store(key: "session", data: data)
+    }
+
+    /// Display info saved alongside the session. Sessions stored by versions
+    /// that predate these fields decode to an account with all fields nil.
+    func loadAccount() -> JellyfinAccount? {
+        guard let data = load(key: "session") else { return nil }
+        return try? JSONDecoder().decode(JellyfinAccount.self, from: data)
     }
 
     func loadSession() -> JellyfinSession? {
@@ -19,12 +32,28 @@ final class KeychainCredentialStore {
         return stored.session
     }
 
+    /// The server rejected the token. Drops the token but keeps who was
+    /// signed in where (server URL, user ID, display names), so the next
+    /// sign-in can tell "the same user is back" from "somebody else".
+    /// `loadSession()` then returns a session that is not authenticated.
+    func markSessionExpired() {
+        guard let data = load(key: "session"),
+              var stored = try? JSONDecoder().decode(StoredSession.self, from: data) else { return }
+        stored.accessToken = nil
+        guard let updated = try? JSONEncoder().encode(stored) else { return }
+        store(key: "session", data: updated)
+    }
+
     func saveSonicAPIKey(_ key: String) {
         store(key: "sonicApiKey", data: Data(key.utf8))
     }
 
     func loadSonicAPIKey() -> String? {
         load(key: "sonicApiKey").map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    func clearSonicAPIKey() {
+        delete(key: "sonicApiKey")
     }
 
     func clear() {
@@ -74,6 +103,11 @@ private struct StoredSession: Codable {
     var deviceID: String
     var accessToken: String?
     var userID: String?
+    // Added after the first release: optional, and named exactly like
+    // `JellyfinAccount`'s properties, which is decoded from the same blob.
+    var serverName: String?
+    var serverVersion: String?
+    var userName: String?
 
     init(from session: JellyfinSession) {
         serverURL = session.serverURL
@@ -84,5 +118,41 @@ private struct StoredSession: Codable {
 
     var session: JellyfinSession {
         JellyfinSession(serverURL: serverURL, deviceID: deviceID, accessToken: accessToken, userID: userID)
+    }
+}
+
+// MARK: - Scrobbling credentials
+
+/// ListenBrainz user token and Last.fm session key. Kept apart from
+/// `clear()` because they belong to the scrobbling accounts, not the
+/// Jellyfin login; `ScrobbleService` removes them on disconnect / sign-out.
+extension KeychainCredentialStore {
+    func saveListenBrainzToken(_ token: String) {
+        store(key: "listenBrainzToken", data: Data(token.utf8))
+    }
+
+    func loadListenBrainzToken() -> String? {
+        load(key: "listenBrainzToken").map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    func deleteListenBrainzToken() {
+        delete(key: "listenBrainzToken")
+    }
+
+    func saveLastFMSessionKey(_ key: String) {
+        store(key: "lastFMSessionKey", data: Data(key.utf8))
+    }
+
+    func loadLastFMSessionKey() -> String? {
+        load(key: "lastFMSessionKey").map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    func deleteLastFMSessionKey() {
+        delete(key: "lastFMSessionKey")
+    }
+
+    func clearScrobblingCredentials() {
+        delete(key: "listenBrainzToken")
+        delete(key: "lastFMSessionKey")
     }
 }

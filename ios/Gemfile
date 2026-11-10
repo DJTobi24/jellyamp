@@ -1,0 +1,10 @@
+source "https://rubygems.org"
+
+# Release tooling only (see docs/RELEASE.md). Run it through Bundler so
+# everyone, including CI, uses the same fastlane:
+#
+#     cd ios && bundle install && bundle exec fastlane lanes
+#
+# 2.241 is the floor: it knows the 2025 App Store age rating questions
+# (metadata/app_rating.json). Gemfile.lock pins the exact version.
+gem "fastlane", "~> 2.241"

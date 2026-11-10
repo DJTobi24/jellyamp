@@ -1,0 +1,29 @@
+# GitHub Pages configuration (Settings -> Pages -> "Deploy from a branch",
+# branch main, folder /docs). Publishes the three public pages the App Store
+# listing links to:
+#
+#   https://djtobi24.github.io/jellyamp/           index.md    (marketing URL)
+#   https://djtobi24.github.io/jellyamp/privacy/   PRIVACY.md  (privacy policy URL)
+#   https://djtobi24.github.io/jellyamp/support/   SUPPORT.md  (support URL)
+#
+# Those URLs are also hard-coded in ios/Jellyamp/Features/Settings/AboutView.swift
+# and ios/fastlane/metadata/*/*_url.txt; scripts/check-appstore-metadata.py
+# keeps them in sync.
+title: Jellyamp
+description: A music player for your Jellyfin server
+theme: jekyll-theme-primer
+
+# Developer documentation stays on GitHub; it is not part of the public site
+# (and some of it contains "{{ ... }}" snippets Jekyll would try to evaluate).
+exclude:
+  - adr
+  - ARCHITECTURE.md
+  - AUDIO-ENGINE.md
+  - CARPLAY.md
+  - DESIGN.md
+  - JELLYFIN-API-NOTES.md
+  - LOCALIZATION.md
+  - RELEASE.md
+  - ROADMAP.md
+  - SCROBBLING.md
+  - SONIC-API.md

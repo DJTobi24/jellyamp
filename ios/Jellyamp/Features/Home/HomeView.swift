@@ -2,111 +2,235 @@ import SwiftUI
 import JellyampCore
 import JellyfinBackend
 
-/// Landing screen: recently added/played shelves; the Mixes-for-You shelf
-/// appears when the sonic provider reports the `mixes` capability.
+/// Landing screen in Plexamp spirit: Mixes for You and Sonic Adventure when
+/// the sonic provider offers them, stations (which also work against plain
+/// Jellyfin), and the recently played / added / favorite shelves.
+///
+/// Content comes from `HomeViewModel`: cached shelves paint immediately and
+/// every shelf refreshes on its own, so one failing request never empties
+/// the screen.
 struct HomeView: View {
     @EnvironmentObject private var container: DependencyContainer
-    @State private var recentAlbums: [Album] = []
-    @State private var recentTracks: [Track] = []
-    @State private var mixes: [MixDescriptor] = []
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @StateObject private var model = HomeViewModel()
+
+    private var metrics: HomeMetrics {
+        HomeMetrics(isWide: horizontalSizeClass == .regular)
+    }
+
+    private var supportsMixes: Bool {
+        container.sonicCapabilities.supports(.mixes)
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if !mixes.isEmpty {
-                        shelf(title: "Mixes for You") {
-                            ForEach(mixes) { mix in
-                                Button {
-                                    play(mix: mix)
-                                } label: {
-                                    MixCard(mix: mix)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                content
+                    .padding(.vertical, 12)
+            }
+            .navigationTitle(greetingTitle)
+            .task { await model.loadIfNeeded(container: container) }
+            .task(id: supportsMixes) {
+                // The sonic server is probed after launch; fetch the mixes
+                // once it turns out to be there. The regular refresh covers
+                // the first load.
+                if model.hasFinishedRefresh {
+                    await model.refreshMixes(container: container)
+                }
+            }
+            .refreshable { await model.refresh(container: container) }
+        }
+    }
+
+    private var greetingTitle: LocalizedStringKey {
+        switch HomeGreeting.bucket(for: Date()) {
+        case .morning: return "Good Morning"
+        case .afternoon: return "Good Afternoon"
+        case .evening: return "Good Evening"
+        case .night: return "Late Night Listening"
+        }
+    }
+
+    // MARK: - States
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.contentState {
+        case .loadingFirstTime:
+            HomeSkeleton(metrics: metrics)
+        case .content:
+            shelves
+        case .emptyLibrary:
+            ContentUnavailableCompatView(
+                title: "Your Library Is Empty",
+                systemImage: "music.note.house",
+                description: "Add music to your Jellyfin server and it will show up here. Pull down to refresh."
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.top, 80)
+        case .unreachable:
+            VStack(spacing: 8) {
+                ContentUnavailableCompatView(
+                    title: "Can't Reach Your Server",
+                    systemImage: "wifi.exclamationmark",
+                    description: "Home could not be loaded. Check your connection and try again."
+                )
+                Button("Try Again") {
+                    Task { await model.refresh(container: container) }
+                }
+                .buttonStyle(.bordered)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 80)
+        }
+    }
+
+    private var shelves: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            if supportsMixes, !model.mixes.isEmpty {
+                mixesShelf
+            }
+            if container.sonicCapabilities.supports(.adventure) {
+                adventureBanner
+            }
+            if container.sonicCapabilities.supports(.sage) {
+                SonicSageHomeEntry(inset: metrics.inset)
+            }
+            if hasStations {
+                HomeStationShelves(
+                    stations: container.stations,
+                    shelves: model.stationShelves,
+                    metrics: metrics
+                )
+            }
+            if !model.jumpBackIn.isEmpty {
+                albumShelf("Jump Back In", albums: model.jumpBackIn)
+            }
+            if !model.recentTracks.isEmpty {
+                recentlyPlayedShelf
+            }
+            if !model.recentAlbums.isEmpty {
+                albumShelf("Recently Added", albums: model.recentAlbums)
+            }
+            if !model.favoriteAlbums.isEmpty {
+                albumShelf("Favorite Albums", albums: model.favoriteAlbums)
+            }
+        }
+    }
+
+    private var hasStations: Bool {
+        let shelves = model.stationShelves
+        return !shelves.stations.isEmpty || !shelves.timeTravel.isEmpty
+    }
+
+    // MARK: - Shelves
+
+    private var mixesShelf: some View {
+        HomeShelf("Mixes for You", inset: metrics.inset) {
+            ForEach(model.mixes) { mix in
+                NavigationLink(destination: MixDetailView(mix: mix)) {
+                    MixCard(mix: mix, size: metrics.cardSize)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(AccessibilityID.Home.mix(mix.id))
+                .contextMenu {
+                    Button {
+                        play(mix: mix, shuffled: false)
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
                     }
-                    shelf(title: "Recently Added") {
-                        ForEach(recentAlbums) { album in
-                            NavigationLink(destination: AlbumDetailView(album: album)) {
-                                AlbumCard(album: album)
-                            }
-                            .buttonStyle(.plain)
-                            .albumContextActions(album)
-                        }
-                    }
-                    shelf(title: "Recently Played") {
-                        ForEach(Array(recentTracks.enumerated()), id: \.element.id) { index, track in
-                            Button {
-                                container.player?.load(queue: PlayQueue(tracks: recentTracks, startAt: index))
-                            } label: {
-                                TrackCard(track: track)
-                            }
-                            .buttonStyle(.plain)
-                            .trackContextActions(track)
-                        }
+                    Button {
+                        play(mix: mix, shuffled: true)
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
                     }
                 }
-                .padding(.horizontal)
-            }
-            .navigationTitle("Home")
-            .task { await load() }
-            .refreshable { await load() }
-        }
-    }
-
-    private func shelf<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.title2.bold())
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12, content: content)
             }
         }
     }
 
-    private func play(mix: MixDescriptor) {
+    private var adventureBanner: some View {
+        NavigationLink(destination: SonicAdventureView()) {
+            HStack(spacing: 14) {
+                Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(Color.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sonic Adventure")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Text("Travel from one track to another through your library.")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            .padding(14)
+            .background(
+                LinearGradient(colors: [.indigo, .purple], startPoint: .leading, endPoint: .trailing),
+                in: RoundedRectangle(cornerRadius: 14)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(AccessibilityID.Home.adventure)
+        .frame(maxWidth: 640, alignment: .leading)
+        .padding(.horizontal, metrics.inset)
+    }
+
+    private func albumShelf(_ title: LocalizedStringKey, albums: [Album]) -> some View {
+        HomeShelf(title, inset: metrics.inset) {
+            ForEach(albums) { album in
+                NavigationLink(destination: AlbumDetailView(album: album)) {
+                    AlbumCard(album: album, size: metrics.cardSize)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(AccessibilityID.Home.album(album.id))
+                .albumContextActions(album)
+            }
+        }
+    }
+
+    private var recentlyPlayedShelf: some View {
+        HomeShelf("Recently Played", inset: metrics.inset) {
+            ForEach(Array(model.recentTracks.enumerated()), id: \.element.id) { index, track in
+                Button {
+                    container.player?.load(queue: PlayQueue(tracks: model.recentTracks, startAt: index))
+                } label: {
+                    TrackCard(track: track, size: metrics.trackCardSize)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(AccessibilityID.Home.track(track.id))
+                .trackContextActions(track)
+            }
+        }
+    }
+
+    private func play(mix: MixDescriptor, shuffled: Bool) {
         Task {
-            guard let tracks = try? await container.library?.tracks(byIDs: mix.itemIDs), !tracks.isEmpty else { return }
-            container.player?.load(queue: PlayQueue(tracks: tracks))
-        }
-    }
-
-    private func load() async {
-        let cache = container.libraryCache
-        // Paint last-known content immediately so the screen isn't empty while
-        // the network round-trips.
-        if let cached = cache?.load([Album].self, for: LibraryCacheKey.recentAlbums) { recentAlbums = cached }
-        if let cached = cache?.load([Track].self, for: LibraryCacheKey.recentTracks) { recentTracks = cached }
-        if let cached = cache?.load([MixDescriptor].self, for: LibraryCacheKey.mixes) { mixes = cached }
-
-        // Refresh in the background; only replace + re-cache on success, so a
-        // failed request keeps the cached content on screen.
-        guard let library = container.library else { return }
-        if let albums = try? await library.recentlyAddedAlbums(limit: 20) {
-            recentAlbums = albums
-            cache?.save(albums, for: LibraryCacheKey.recentAlbums)
-        }
-        if let tracks = try? await library.recentlyPlayedTracks(limit: 20) {
-            recentTracks = tracks
-            cache?.save(tracks, for: LibraryCacheKey.recentTracks)
-        }
-        if container.sonicCapabilities.supports(.mixes),
-           let sonic = container.sonic,
-           let userID = container.session?.userID,
-           let fresh = try? await sonic.mixes(forUser: userID) {
-            mixes = fresh
-            cache?.save(fresh, for: LibraryCacheKey.mixes)
+            guard let resolver = container.trackResolver,
+                  let tracks = try? await resolver.tracks(byIDs: mix.itemIDs), !tracks.isEmpty else { return }
+            if shuffled {
+                container.player?.playShuffled(tracks)
+            } else {
+                container.player?.load(queue: PlayQueue(tracks: tracks))
+            }
         }
     }
 }
 
 struct AlbumCard: View {
     let album: Album
+    var size: CGFloat = 150
 
     var body: some View {
         VStack(alignment: .leading) {
-            ArtworkView(itemID: album.id, imageTag: album.imageTag, size: 150)
+            ArtworkView(itemID: album.id, imageTag: album.imageTag, size: size)
             Text(album.title)
                 .font(.callout)
                 .lineLimit(1)
@@ -115,16 +239,17 @@ struct AlbumCard: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .frame(width: 150)
+        .frame(width: size)
     }
 }
 
 struct TrackCard: View {
     let track: Track
+    var size: CGFloat = 120
 
     var body: some View {
         VStack(alignment: .leading) {
-            ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 120)
+            ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: size)
             Text(track.title)
                 .font(.callout)
                 .lineLimit(1)
@@ -133,18 +258,19 @@ struct TrackCard: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .frame(width: 120)
+        .frame(width: size)
     }
 }
 
 struct MixCard: View {
     let mix: MixDescriptor
+    var size: CGFloat = 150
 
     var body: some View {
         VStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 8)
                 .fill(LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 150, height: 150)
+                .frame(width: size, height: size)
                 .overlay {
                     Image(systemName: "waveform")
                         .font(.largeTitle)
@@ -160,7 +286,7 @@ struct MixCard: View {
                     .lineLimit(2)
             }
         }
-        .frame(width: 150)
+        .frame(width: size)
     }
 }
 
@@ -187,6 +313,9 @@ struct ArtworkView: View {
     }
 
     private var imageURL: URL? {
+        // Covers of downloaded music are on disk; use them first so artwork
+        // shows offline (and costs no request online).
+        if let local = DownloadArtworkStore.localURL(itemID: itemID) { return local }
         guard let session = container.session else { return nil }
         return ImageURLBuilder.url(
             itemID: itemID,

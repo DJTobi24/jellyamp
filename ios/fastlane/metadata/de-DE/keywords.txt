@@ -1,0 +1,1 @@
+selfhosted,flac,radio,crossfade,equalizer,verlustfrei,offline,songtexte,audio,streaming,nas,hifi

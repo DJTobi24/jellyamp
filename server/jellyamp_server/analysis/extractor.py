@@ -1,64 +1,63 @@
-"""Per-track analysis: audio embedding + EBU R128 loudness.
+"""Selects the analysis backend from configuration (ADR-0004).
 
-Essentia (with the MusiCNN model) is an optional heavy dependency; when it is
-not installed the extractor reports unavailable and the API drops the
-corresponding capabilities. This keeps tests and slim deployments light and
-makes the extractor pluggable (ADR-0004).
+`ANALYSIS_BACKEND`:
+- `auto` (default): Essentia/MusiCNN when installed *and* its model file is
+  present, otherwise the built-in DSP backend, otherwise none.
+- `dsp` / `essentia`: require that backend; startup fails with the reason if
+  it cannot run (an explicit choice must not silently degrade).
+- `none`: never analyze; the API serves whatever is already stored.
 """
 
-from dataclasses import dataclass
+import logging
 
-import numpy as np
+from jellyamp_server.analysis import audio, essentia_backend
+from jellyamp_server.analysis.base import Extractor
+from jellyamp_server.analysis.dsp import DSPExtractor
+from jellyamp_server.config import ConfigError, Settings
 
-try:  # pragma: no cover - exercised only in the analysis image
-    import essentia.standard as es
-
-    ESSENTIA_AVAILABLE = True
-except ImportError:  # pragma: no cover
-    ESSENTIA_AVAILABLE = False
-
-EMBEDDING_DIM = 200
-MUSICNN_MODEL_PATH = "jellyamp_server/analysis/models/msd-musicnn-1.pb"
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class AnalysisResult:
-    embedding: np.ndarray
-    integrated_lufs: float
-    true_peak: float
-
-
-def is_available() -> bool:
-    return ESSENTIA_AVAILABLE
-
-
-def analyze_clip(audio_bytes: bytes) -> AnalysisResult:  # pragma: no cover
-    """Decode an MP3 clip and compute embedding + loudness via Essentia."""
-    if not ESSENTIA_AVAILABLE:
-        raise RuntimeError("essentia-tensorflow is not installed (install the 'analysis' extra)")
-
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
-        tmp.write(audio_bytes)
-        tmp.flush()
-        audio_16k = es.MonoLoader(filename=tmp.name, sampleRate=16000)()
-        audio_44k = es.MonoLoader(filename=tmp.name, sampleRate=44100)()
-
-    embedding_model = es.TensorflowPredictMusiCNN(
-        graphFilename=MUSICNN_MODEL_PATH,
-        output="model/dense/BiasAdd",
+def _problems(config: Settings) -> tuple[str | None, str | None]:
+    """(why essentia cannot run, why ffmpeg cannot run); None = it can."""
+    essentia_problem = essentia_backend.unavailable_reason(config.musicnn_model_path)
+    ffmpeg_problem = (
+        None
+        if audio.ffmpeg_available(config.ffmpeg_path)
+        else f"ffmpeg binary {config.ffmpeg_path!r} not found on PATH"
     )
-    # Mean-pool patch embeddings into one vector per track.
-    patches = embedding_model(audio_16k)
-    embedding = np.mean(patches, axis=0).astype(np.float32)
+    return essentia_problem, ffmpeg_problem
 
-    loudness = es.LoudnessEBUR128()(np.column_stack([audio_44k, audio_44k]))
-    integrated_lufs = float(loudness[2])
-    true_peak = float(20.0 * np.log10(max(np.max(np.abs(audio_44k)), 1e-9)))
 
-    return AnalysisResult(
-        embedding=embedding,
-        integrated_lufs=integrated_lufs,
-        true_peak=true_peak,
-    )
+def preflight(config: Settings) -> None:
+    """Raises ConfigError when an explicitly requested backend cannot run."""
+    essentia_problem, ffmpeg_problem = _problems(config)
+    if config.analysis_backend == "essentia" and essentia_problem:
+        raise ConfigError(f"ANALYSIS_BACKEND=essentia but {essentia_problem}")
+    if config.analysis_backend == "dsp" and ffmpeg_problem:
+        raise ConfigError(f"ANALYSIS_BACKEND=dsp but {ffmpeg_problem}")
+
+
+def select_extractor(config: Settings) -> Extractor | None:
+    backend = config.analysis_backend
+    if backend == "none":
+        return None
+    preflight(config)
+    essentia_problem, ffmpeg_problem = _problems(config)
+    ffmpeg_ok = ffmpeg_problem is None
+
+    if backend == "essentia":
+        return essentia_backend.EssentiaExtractor(config.musicnn_model_path, config.ffmpeg_path)
+    if backend == "dsp":
+        return DSPExtractor(config.ffmpeg_path)
+
+    # auto
+    if essentia_problem is None:
+        return essentia_backend.EssentiaExtractor(config.musicnn_model_path, config.ffmpeg_path)
+    if essentia_backend.ESSENTIA_AVAILABLE:
+        # Installed but unusable is worth a line: the user built the full image.
+        logger.warning("essentia backend unavailable (%s); using DSP backend", essentia_problem)
+    if ffmpeg_ok:
+        return DSPExtractor(config.ffmpeg_path)
+    logger.warning("no analysis backend available (%s); analysis disabled", ffmpeg_problem)
+    return None

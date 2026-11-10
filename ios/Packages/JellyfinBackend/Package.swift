@@ -21,5 +21,8 @@ let package = Package(
             dependencies: ["JellyfinBackend"],
             resources: [.copy("Fixtures")]
         ),
+        // Runs against a real Jellyfin server (scripts/dev-jellyfin/up.sh);
+        // every test skips itself unless JELLYFIN_TEST_URL/_USER/_PASSWORD are set.
+        .testTarget(name: "JellyfinLiveTests", dependencies: ["JellyfinBackend"]),
     ]
 )

@@ -26,7 +26,22 @@ public final class PlaybackReportingAPI: @unchecked Sendable {
         }
     }
 
+    /// Same as `send(_:playSessionID:)` with an explicit play method for this
+    /// one report (`DirectPlay`, `DirectStream` or `Transcode`), so a queue
+    /// that mixes direct and transcoded tracks reports each correctly.
+    public func send(_ report: PlaybackReport, playSessionID: String, playMethod: String) async throws {
+        let request = try makeRequest(for: report, playSessionID: playSessionID, playMethod: playMethod)
+        let (_, response) = try await transport.send(request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw JellyfinError.serverError(status: response.statusCode)
+        }
+    }
+
     func makeRequest(for report: PlaybackReport, playSessionID: String) throws -> URLRequest {
+        try makeRequest(for: report, playSessionID: playSessionID, playMethod: playMethod)
+    }
+
+    func makeRequest(for report: PlaybackReport, playSessionID: String, playMethod: String) throws -> URLRequest {
         struct Body: Codable {
             var ItemId: String
             var PositionTicks: Int64

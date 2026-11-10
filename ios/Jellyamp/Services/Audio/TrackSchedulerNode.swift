@@ -3,7 +3,7 @@ import AVFAudio
 import JellyampCore
 
 /// One playback chain: AVAudioPlayerNode → 10-band AVAudioUnitEQ → main mixer.
-/// `EnginePlayer` alternates two of these for gapless joins and crossfades.
+/// `AudioEnginePlayer` alternates two of these for crossfades.
 final class TrackSchedulerNode {
     let player = AVAudioPlayerNode()
     let eq = AVAudioUnitEQ(numberOfBands: 10)
