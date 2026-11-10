@@ -68,13 +68,15 @@ public final class LibraryBrowseAPI: LibraryBrowsing, @unchecked Sendable {
     }
 
     public func albumsPage(sort: LibrarySortQuery, filter: BrowseFilter, startIndex: Int, limit: Int) async throws -> Page<Album> {
+        if Self.isBeyondRandomSample(sort: sort, startIndex: startIndex) { return Page(items: []) }
         var query = itemsQuery(type: "MusicAlbum", sort: sort, filter: filter, startIndex: startIndex, limit: limit)
         if let artistID = filter.artistID { query.append(URLQueryItem(name: "albumArtistIds", value: artistID)) }
         let response = try await items(query)
-        return Page(items: response.Items.map(DTOMapper.album(from:)), totalCount: response.TotalRecordCount)
+        return Self.page(response.Items.map(DTOMapper.album(from:)), total: response.TotalRecordCount, sort: sort)
     }
 
     public func artistsPage(sort: LibrarySortQuery, filter: BrowseFilter, startIndex: Int, limit: Int) async throws -> Page<Artist> {
+        if Self.isBeyondRandomSample(sort: sort, startIndex: startIndex) { return Page(items: []) }
         var query = [
             URLQueryItem(name: "sortBy", value: sort.sortBy),
             URLQueryItem(name: "sortOrder", value: sort.sortOrder),
@@ -87,20 +89,42 @@ public final class LibraryBrowseAPI: LibraryBrowsing, @unchecked Sendable {
         if let genreID = filter.genreID { query.append(URLQueryItem(name: "genreIds", value: genreID)) }
         if let term = filter.searchTerm { query.append(URLQueryItem(name: "searchTerm", value: term)) }
         let response: ItemsResponse = try await execute(session.request(path: "Artists/AlbumArtists", query: query))
-        return Page(items: response.Items.map(DTOMapper.artist(from:)), totalCount: response.TotalRecordCount)
+        return Self.page(response.Items.map(DTOMapper.artist(from:)), total: response.TotalRecordCount, sort: sort)
     }
 
     public func tracksPage(sort: LibrarySortQuery, filter: BrowseFilter, startIndex: Int, limit: Int) async throws -> Page<Track> {
+        if Self.isBeyondRandomSample(sort: sort, startIndex: startIndex) { return Page(items: []) }
         var query = itemsQuery(type: "Audio", sort: sort, filter: filter, startIndex: startIndex, limit: limit)
         if let artistID = filter.artistID { query.append(URLQueryItem(name: "artistIds", value: artistID)) }
         let response = try await items(query)
-        return Page(items: response.Items.map(DTOMapper.track(from:)), totalCount: response.TotalRecordCount)
+        return Self.page(response.Items.map(DTOMapper.track(from:)), total: response.TotalRecordCount, sort: sort)
     }
 
     public func playlistsPage(sort: LibrarySortQuery, filter: BrowseFilter, startIndex: Int, limit: Int) async throws -> Page<Playlist> {
+        if Self.isBeyondRandomSample(sort: sort, startIndex: startIndex) { return Page(items: []) }
         let query = itemsQuery(type: "Playlist", sort: sort, filter: filter, startIndex: startIndex, limit: limit)
         let response = try await items(query)
-        return Page(items: response.Items.map(Self.playlist(from:)), totalCount: response.TotalRecordCount)
+        return Self.page(response.Items.map(Self.playlist(from:)), total: response.TotalRecordCount, sort: sort)
+    }
+
+    // MARK: - Random order
+
+    // `sortBy=Random` is a new order on every request, so a second page of
+    // a random list repeats some items and never shows others
+    // (docs/JELLYFIN-API-NOTES.md, "Library queries"). A randomly sorted
+    // list is therefore one page: a sample of `limit` items that reports
+    // itself as complete; asking again (pull to refresh) draws a new one.
+
+    static func isRandom(_ sort: LibrarySortQuery) -> Bool {
+        sort.sortBy.split(separator: ",").contains { $0 == "Random" }
+    }
+
+    static func isBeyondRandomSample(sort: LibrarySortQuery, startIndex: Int) -> Bool {
+        isRandom(sort) && startIndex > 0
+    }
+
+    static func page<Item>(_ items: [Item], total: Int?, sort: LibrarySortQuery) -> Page<Item> {
+        Page(items: items, totalCount: isRandom(sort) ? items.count : total)
     }
 
     public func genresPage(startIndex: Int, limit: Int) async throws -> Page<Genre> {

@@ -88,8 +88,19 @@ struct LibraryActions {
     }
 
     func download(_ tracks: [Track]) {
-        guard !tracks.isEmpty, let downloads = container.downloads else { return }
-        downloads.download(tracks)
+        download(.tracks(tracks))
+    }
+
+    /// Downloads a named collection, so the Downloads tab lists it as that
+    /// album / playlist / artist (and a playlist follows server changes).
+    func download(_ target: DownloadTarget) {
+        guard !target.tracks.isEmpty, let downloads = container.downloads else { return }
+        switch target {
+        case .tracks(let tracks): downloads.download(tracks)
+        case .album(let album, let tracks): downloads.download(album: album, tracks: tracks)
+        case .playlist(let playlist, let tracks): downloads.download(playlist: playlist, tracks: tracks)
+        case .artist(let artist, let tracks): downloads.download(artist: artist, tracks: tracks)
+        }
         ToastCenter.shared.show(String(localized: "Downloading"), style: .info)
     }
 
@@ -316,6 +327,8 @@ private struct CollectionActionButtons: View {
     let actions: LibraryActions
     /// Name used for the "Add to Playlist" sheet.
     let title: String
+    /// What "Download" stores the fetched tracks as; plain tracks when nil.
+    var downloadTarget: (([Track]) -> DownloadTarget)? = nil
     let tracks: () async throws -> [Track]
 
     var body: some View {
@@ -336,7 +349,7 @@ private struct CollectionActionButtons: View {
         } label: { Label("Add to Playlist…", systemImage: "text.badge.plus") }
         if actions.container.downloads != nil {
             Button {
-                actions.withTracks(tracks) { actions.download($0) }
+                actions.withTracks(tracks) { actions.download(downloadTarget?($0) ?? .tracks($0)) }
             } label: { Label("Download", systemImage: "arrow.down.circle") }
         }
     }
@@ -371,7 +384,11 @@ private struct AlbumActionButtons: View {
     let context: BrowseContext
 
     var body: some View {
-        CollectionActionButtons(actions: actions, title: album.title) {
+        CollectionActionButtons(
+            actions: actions,
+            title: album.title,
+            downloadTarget: { .album(album, tracks: $0) }
+        ) {
             try await actions.albumTracks(album)
         }
         FavoriteMenuButton(
@@ -428,7 +445,11 @@ private struct ArtistActionButtons: View {
     let actions: LibraryActions
 
     var body: some View {
-        CollectionActionButtons(actions: actions, title: artist.name) {
+        CollectionActionButtons(
+            actions: actions,
+            title: artist.name,
+            downloadTarget: { .artist(artist, tracks: $0) }
+        ) {
             try await actions.artistTracks(artist)
         }
         FavoriteMenuButton(
@@ -481,7 +502,11 @@ private struct PlaylistContextActions: ViewModifier {
     func body(content: Content) -> some View {
         content.contextMenu {
             let actions = LibraryActions(container: container, section: section)
-            CollectionActionButtons(actions: actions, title: playlist.name) {
+            CollectionActionButtons(
+                actions: actions,
+                title: playlist.name,
+                downloadTarget: { .playlist(playlist, tracks: $0) }
+            ) {
                 try await actions.playlistTracks(playlist)
             }
         }
@@ -557,6 +582,7 @@ struct FavoriteButton: View {
 
     var body: some View {
         Button {
+            Haptics.toggle()
             favorites.toggle(itemID: itemID, serverValue: serverValue, library: container.library)
         } label: {
             Image(systemName: isFavorite ? "heart.fill" : "heart")

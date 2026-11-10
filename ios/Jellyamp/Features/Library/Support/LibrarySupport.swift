@@ -4,16 +4,20 @@ import JellyampCore
 import JellyfinBackend
 
 extension DependencyContainer {
-    /// Paged library access for the browsing screens. In offline mode it goes
-    /// through `library` (which another layer decorates with the offline
-    /// filter) so lists show what is actually playable; otherwise it talks to
-    /// the server directly. Cheap to create, so it is built on demand.
+    /// Paged library access for the browsing screens: the server while it is
+    /// reachable, the downloaded library otherwise — offline mode, no
+    /// network, or a request that fails for connectivity reasons. It shares
+    /// `offline`'s state tracker with `library`, so both switch together and
+    /// a browse request that finds the server gone raises the offline
+    /// banner. The server client uses the session transport: a rejected
+    /// token is noticed from any list. Cheap to create; built on demand.
     var browser: LibraryBrowsing? {
-        if settings.offlineModeEnabled, let library {
-            return LibraryProviderBrowser(library: library)
-        }
-        guard let session else { return nil }
-        return LibraryBrowseAPI(session: session)
+        guard let session, let library else { return nil }
+        return OfflineAwareBrowser(
+            online: LibraryBrowseAPI(session: session, transport: makeSessionTransport()),
+            offline: LibraryProviderBrowser(library: library),
+            state: offline.status.tracker
+        )
     }
 }
 
@@ -40,6 +44,9 @@ enum LibraryErrorText {
         if error is LibraryBrowseError {
             return String(localized: "This list is not available offline.")
         }
+        if let offlineText = OfflineErrorMessage.text(for: error) {
+            return offlineText
+        }
         if let error = error as? URLError {
             switch error.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
@@ -63,8 +70,14 @@ enum LibraryErrorText {
     }
 }
 
-/// Session-wide favorite state. Every heart reads through it, so a change
-/// made on one screen shows on all others without reloading them.
+/// Session-wide favorite state and the one way to change it.
+///
+/// Every heart — rows, menus, Now Playing, the lock screen's like command,
+/// CarPlay, the Siri intent — reads through `isFavorite` and writes through
+/// `set` / `toggle`, so a change made anywhere shows everywhere. Surfaces
+/// that keep their own copy of the flag (the player's queued tracks, and
+/// through them the lock screen) are updated by `onChange`, which the
+/// container installs.
 @MainActor
 final class FavoritesModel: ObservableObject {
     static let shared = FavoritesModel()
@@ -74,26 +87,50 @@ final class FavoritesModel: ObservableObject {
     /// it moves (reloading on the optimistic change would race the request).
     @Published private(set) var confirmedChanges = 0
 
+    /// Called for every change of an item's effective state, including the
+    /// rollback of a failed one.
+    var onChange: ((_ itemID: String, _ isFavorite: Bool) -> Void)?
+    /// Called once the server has accepted a change.
+    var onConfirmed: (() -> Void)?
+
     func isFavorite(_ itemID: String, serverValue: Bool) -> Bool {
         overrides.isFavorite(itemID, serverValue: serverValue)
     }
 
-    /// Flips the heart immediately and writes it to the server; on failure
-    /// the previous state comes back and a banner explains why.
-    func toggle(itemID: String, serverValue: Bool, library: MusicLibraryProviding?) {
+    func isFavorite(_ track: Track) -> Bool {
+        overrides.isFavorite(track.id, serverValue: track.isFavorite)
+    }
+
+    /// Sets the favorite state: shown immediately, then written to the
+    /// server; on failure the previous state comes back and the error is
+    /// thrown for the caller to present. Does nothing when the item already
+    /// is in the wanted state.
+    func set(itemID: String, isFavorite target: Bool, serverValue: Bool, library: MusicLibraryProviding?) async throws {
+        let before = overrides.isFavorite(itemID, serverValue: serverValue)
+        guard before != target else { return }
         let previous = overrides.values[itemID]
-        let target = !overrides.isFavorite(itemID, serverValue: serverValue)
         overrides.set(itemID, isFavorite: target)
-        guard let library else {
+        onChange?(itemID, target)
+        do {
+            guard let library else { throw JellyfinError.notAuthenticated }
+            try await library.setFavorite(itemID: itemID, isFavorite: target)
+        } catch {
             overrides.restore(itemID, previous: previous)
-            return
+            onChange?(itemID, before)
+            throw error
         }
+        confirmedChanges += 1
+        onConfirmed?()
+    }
+
+    /// Flips the heart for the in-app buttons; a failure is explained by a
+    /// banner.
+    func toggle(itemID: String, serverValue: Bool, library: MusicLibraryProviding?) {
+        let target = !overrides.isFavorite(itemID, serverValue: serverValue)
         Task { @MainActor in
             do {
-                try await library.setFavorite(itemID: itemID, isFavorite: target)
-                self.confirmedChanges += 1
+                try await self.set(itemID: itemID, isFavorite: target, serverValue: serverValue, library: library)
             } catch {
-                self.overrides.restore(itemID, previous: previous)
                 ToastCenter.shared.show(
                     target
                         ? String(localized: "Could not add to favorites.")
@@ -138,8 +175,14 @@ final class LibraryChanges: ObservableObject {
     /// changed; the playlists list refreshes when it moves.
     @Published private(set) var playlistsRevision = 0
 
-    func playlistsChanged() {
+    /// - Parameter namesChanged: a playlist was created, renamed or deleted.
+    ///   Siri only recognises playlist names it was told about, so the
+    ///   system is asked to read the list again.
+    func playlistsChanged(namesChanged: Bool = false) {
         playlistsRevision += 1
+        if namesChanged {
+            SystemIntegration.shared.refreshShortcutParameters()
+        }
     }
 }
 

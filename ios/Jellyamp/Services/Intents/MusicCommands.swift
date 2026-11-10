@@ -240,16 +240,18 @@ struct MusicCommands {
         player.skipToPrevious()
     }
 
-    /// Likes (or unlikes) the playing song on the server and mirrors the new
-    /// state into the player model so every surface shows the same heart.
+    /// Likes (or unlikes) the playing song through the app's one favorites
+    /// path, so every surface — in-app hearts, lock screen, CarPlay — shows
+    /// the same state. Throws what the server answered if it refuses.
     @discardableResult
     func setCurrentTrackFavorite(_ isFavorite: Bool) async throws -> Track {
         guard let track = currentTrack else { throw MusicCommandError.nothingPlaying }
-        try await library.setFavorite(itemID: track.id, isFavorite: isFavorite)
-        // Only if the same song is still playing — the request takes a moment.
-        if container.playerState.currentTrack?.id == track.id {
-            container.playerState.currentTrack?.isFavorite = isFavorite
-        }
+        try await FavoritesModel.shared.set(
+            itemID: track.id,
+            isFavorite: isFavorite,
+            serverValue: track.isFavorite,
+            library: library
+        )
         var updated = track
         updated.isFavorite = isFavorite
         return updated

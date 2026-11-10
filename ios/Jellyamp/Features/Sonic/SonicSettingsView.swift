@@ -31,13 +31,17 @@ struct SonicSettingsView: View {
     @State private var probeResult: ProbeResult?
     @State private var connectedVersion: String?
     @State private var showRemoveConfirmation = false
+    /// What the saved server said about itself in the last probe.
+    @State private var serverInfo: SonicServerInfo?
+    @State private var isStartingScan = false
+    @State private var scanError: String?
 
     var body: some View {
         Form {
             statusSection
             serverSection
-            if let progress = analysisSummary {
-                analysisSection(progress)
+            if let capabilities = serverCapabilities {
+                analysisSection(capabilities)
             }
             featuresSection
             aboutSection
@@ -118,25 +122,85 @@ struct SonicSettingsView: View {
         }
     }
 
-    private func analysisSection(_ progress: AnalysisProgressSummary) -> some View {
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                ProgressView(value: progress.fraction)
-                Text("\(progress.tracksAnalyzed) of \(progress.tracksTotal) tracks analyzed (\(progress.percent.formatted(.percent)))")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+    private func analysisSection(_ capabilities: SonicCapabilities) -> some View {
+        let scan = capabilities.scan
+        let isScanning = scan?.isScanning ?? false
+        return Section {
+            if let progress = analysisSummary(capabilities) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ProgressView(value: progress.fraction)
+                    Text("\(progress.tracksAnalyzed) of \(progress.tracksTotal) tracks analyzed (\(progress.percent.formatted(.percent)))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+                .accessibilityElement(children: .combine)
             }
-            .padding(.vertical, 4)
-            .accessibilityElement(children: .combine)
+            if let scan {
+                LabeledContent("Scan", value: scanStateText(scan))
+                if scan.tracksFailed > 0 {
+                    LabeledContent("Could Not Be Analyzed", value: "\(scan.tracksFailed)")
+                }
+                if let lastError = scan.lastError, !lastError.isEmpty {
+                    Text(lastError)
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            }
+            if let backend = capabilities.analysisBackend {
+                LabeledContent("Analysis Engine", value: backendName(backend))
+            }
+            Button {
+                Task { await startScan(retryFailed: false) }
+            } label: {
+                HStack {
+                    Text("Scan Now")
+                    Spacer()
+                    if isStartingScan { ProgressView() }
+                }
+            }
+            .disabled(isStartingScan || isScanning)
+            if let scan, scan.tracksFailed > 0 {
+                Button("Retry Failed Tracks") {
+                    Task { await startScan(retryFailed: true) }
+                }
+                .disabled(isStartingScan || isScanning)
+            }
         } header: {
             Text("Library Analysis")
         } footer: {
-            if progress.isComplete {
-                Text("Your whole library has been analyzed.")
+            if let scanError {
+                Text(scanError).foregroundColor(.red)
+            } else if isScanning {
+                Text("The server is analyzing your library. Sonic features only cover analyzed tracks; pull down to update.")
+            } else if analysisSummary(capabilities)?.isComplete == true {
+                Text("Your whole library has been analyzed. New music is picked up by the server's regular scans, or right away with Scan Now.")
             } else {
                 Text("Analysis runs in the background on the server. Sonic features only cover analyzed tracks; pull down to update.")
             }
         }
+    }
+
+    private func scanStateText(_ scan: SonicScanStatus) -> String {
+        if scan.isScanning {
+            return scan.tracksPending > 0
+                ? String(localized: "Running, \(scan.tracksPending) tracks to go")
+                : String(localized: "Running")
+        }
+        if let finishedAt = scan.finishedAt {
+            return String(localized: "Finished \(finishedAt.formatted(date: .abbreviated, time: .shortened))")
+        }
+        return String(localized: "Not run yet")
+    }
+
+    private func backendName(_ backend: SonicAnalysisBackend) -> String {
+        let name: String
+        switch backend.name {
+        case "dsp": name = String(localized: "Built-in DSP")
+        case "musicnn": name = "Essentia MusiCNN"
+        default: name = backend.name
+        }
+        return backend.version.isEmpty ? name : "\(name) \(backend.version)"
     }
 
     private var featuresSection: some View {
@@ -186,8 +250,18 @@ struct SonicSettingsView: View {
 
     // MARK: - Status
 
-    private var analysisSummary: AnalysisProgressSummary? {
-        guard container.isSonicServerActive, let progress = container.sonicCapabilities.analysisProgress else { return nil }
+    /// The server's own picture of its analysis: from the last probe when
+    /// there is one, else from the active provider. Not simply
+    /// `container.sonicCapabilities` — while the first analysis runs the
+    /// server offers no capabilities yet and the app is on the Jellyfin
+    /// fallback, which is exactly when the progress matters.
+    private var serverCapabilities: SonicCapabilities? {
+        if let serverInfo { return serverInfo.capabilities }
+        return container.isSonicServerActive ? container.sonicCapabilities : nil
+    }
+
+    private func analysisSummary(_ capabilities: SonicCapabilities) -> AnalysisProgressSummary? {
+        guard let progress = capabilities.analysisProgress else { return nil }
         return AnalysisProgressSummary(tracksAnalyzed: progress.tracksAnalyzed, tracksTotal: progress.tracksTotal)
     }
 
@@ -228,7 +302,10 @@ struct SonicSettingsView: View {
             return String(localized: "Server version \(version) is not supported by this app. Jellyfin fallback is active.")
         case .missingKey:
             return String(localized: "No API key is saved. Jellyfin fallback is active.")
-        case .unreachable, .invalidURL, .connected, .none:
+        case .connected:
+            // Reachable, but it offers nothing yet.
+            return String(localized: "The server is reachable but has not finished its first library analysis. Jellyfin fallback is active until then.")
+        case .unreachable, .invalidURL, .none:
             return String(localized: "The server could not be reached. Jellyfin fallback is active.")
         }
     }
@@ -265,6 +342,7 @@ struct SonicSettingsView: View {
         case .mixes: return "Mixes for You"
         case .stations: return "Stations"
         case .loudness: return "Measured Loudness"
+        case .sage: return "Sonic Sage"
         @unknown default: return LocalizedStringKey(capability.rawValue.capitalized)
         }
     }
@@ -282,6 +360,8 @@ struct SonicSettingsView: View {
             return server ? "Genre and decade stations ranked by sound." : "Random genre and decade stations from Jellyfin."
         case .loudness:
             return "Loudness leveling for tracks without gain tags."
+        case .sage:
+            return "Playlists from a text description, using the language model configured on the server."
         @unknown default:
             return ""
         }
@@ -311,11 +391,36 @@ struct SonicSettingsView: View {
             if !container.isSonicServerActive { probeResult = .missingKey }
             return
         }
-        let result = await probe(url: url, apiKey: key)
-        if case .connected(let version) = result {
+        let probed = await probe(url: url, apiKey: key)
+        serverInfo = probed.info
+        if case .connected(let version) = probed.result {
             connectedVersion = version
-        } else if !container.isSonicServerActive {
-            probeResult = result
+        }
+        if !container.isSonicServerActive {
+            probeResult = probed.result
+        }
+    }
+
+    /// Asks the server to scan now and shows the status it answers with.
+    private func startScan(retryFailed: Bool) async {
+        guard let url = container.settings.sonicServerURL, let key = container.storedSonicAPIKey else { return }
+        isStartingScan = true
+        scanError = nil
+        defer { isStartingScan = false }
+        // The active provider when the server is in use; while it is still
+        // on its first analysis the app runs on the fallback provider, which
+        // has no scan — then talk to the configured server directly.
+        let provider: SonicProviding
+        if container.isSonicServerActive, let active = container.sonic {
+            provider = active
+        } else {
+            provider = SonicAPIClient(baseURL: url, apiKey: key)
+        }
+        do {
+            let status = try await provider.startScan(retryFailed: retryFailed)
+            serverInfo?.capabilities.scan = status
+        } catch {
+            scanError = String(localized: "The scan could not be started. Check that the server is running and reachable.")
         }
     }
 
@@ -337,7 +442,7 @@ struct SonicSettingsView: View {
     private func testConnection() async {
         guard let values = formValues() else { return }
         isWorking = true
-        probeResult = await probe(url: values.url, apiKey: values.apiKey)
+        probeResult = await probe(url: values.url, apiKey: values.apiKey).result
         isWorking = false
     }
 
@@ -346,9 +451,10 @@ struct SonicSettingsView: View {
         isWorking = true
         let typedKey = keyText.trimmingCharacters(in: .whitespacesAndNewlines)
         await container.updateSonicServer(url: values.url, newAPIKey: typedKey.isEmpty ? nil : typedKey)
-        let result = await probe(url: values.url, apiKey: values.apiKey)
-        probeResult = result
-        if case .connected(let version) = result { connectedVersion = version }
+        let probed = await probe(url: values.url, apiKey: values.apiKey)
+        probeResult = probed.result
+        serverInfo = probed.info
+        if case .connected(let version) = probed.result { connectedVersion = version }
         urlText = values.url.absoluteString
         keyText = ""
         hasStoredKey = container.storedSonicAPIKey != nil
@@ -364,33 +470,27 @@ struct SonicSettingsView: View {
             hasStoredKey = false
             probeResult = nil
             connectedVersion = nil
+            serverInfo = nil
+            scanError = nil
             isWorking = false
         }
     }
 
-    private func probe(url: URL, apiKey: String) async -> ProbeResult {
-        switch await SonicServerDiscovery().probe(baseURL: url, apiKey: apiKey) {
+    /// One request tells everything: reachability, authorization, contract
+    /// version, and — in the server's info — analysis progress and scan state.
+    private func probe(url: URL, apiKey: String) async -> (result: ProbeResult, info: SonicServerInfo?) {
+        let details = await SonicServerDiscovery().probeDetails(baseURL: url, apiKey: apiKey)
+        switch details.outcome {
         case .available:
-            return .connected(version: await Self.fetchVersion(baseURL: url, apiKey: apiKey))
+            return (.connected(version: details.info?.version), details.info)
         case .unauthorized:
-            return .unauthorized
+            return (.unauthorized, nil)
         case .incompatibleVersion(let version):
-            return .incompatible(version: version)
+            return (.incompatible(version: version), nil)
         case .unreachable:
-            return .unreachable
+            return (.unreachable, nil)
         @unknown default:
-            return .unreachable
+            return (.unreachable, nil)
         }
-    }
-
-    /// The discovery outcome carries capabilities but not the version string,
-    /// so read it from `/api/v1/info` for display.
-    private static func fetchVersion(baseURL: URL, apiKey: String) async -> String? {
-        var request = URLRequest(url: SonicServerConfig.infoURL(baseURL: baseURL))
-        request.setValue(apiKey, forHTTPHeaderField: "X-Api-Key")
-        request.timeoutInterval = 10
-        guard let (data, response) = try? await URLSessionTransport().send(request),
-              response.statusCode == 200 else { return nil }
-        return SonicServerConfig.version(fromInfoBody: data)
     }
 }

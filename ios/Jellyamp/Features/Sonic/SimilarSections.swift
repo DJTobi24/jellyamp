@@ -48,8 +48,8 @@ struct SimilarTracksSection: View {
     }
 }
 
-/// Sonically similar albums for an album. Cards push `AlbumDetailView`, so
-/// the host must live in a `NavigationStack`.
+/// Sonically similar albums for an album. Cards are `RouteLink`s, so they
+/// work in the routed stacks (Library, Search) and in plain ones (Home).
 ///
 ///     SimilarAlbumsSection(albumID: album.id, style: .listSection)
 struct SimilarAlbumsSection: View {
@@ -68,48 +68,11 @@ struct SimilarAlbumsSection: View {
                 await SimilarLoader.albums(similarTo: albumID, limit: limit, container: container)
             },
             card: { albums, index in
-                NavigationLink(destination: AlbumDetailView(album: albums[index])) {
+                RouteLink(.album(albums[index])) {
                     AlbumCard(album: albums[index])
                 }
                 .buttonStyle(.plain)
                 .albumContextActions(albums[index])
-            }
-        )
-    }
-}
-
-/// Sonically similar artists for an artist. Cards push `ArtistDetailView`,
-/// so the host must live in a `NavigationStack`.
-///
-///     SimilarArtistsSection(artistID: artist.id, style: .listSection)
-struct SimilarArtistsSection: View {
-    @EnvironmentObject private var container: DependencyContainer
-    let artistID: String
-    var style: SimilarSectionStyle = .shelf
-    var limit: Int = 12
-
-    var body: some View {
-        SimilarItemsSection(
-            seedID: artistID,
-            title: container.isSonicServerActive ? "Sonically Similar Artists" : "Fans Also Like",
-            style: style,
-            placeholderIsRound: true,
-            load: { container in
-                await SimilarLoader.artists(similarTo: artistID, limit: limit, container: container)
-            },
-            card: { artists, index in
-                NavigationLink(destination: ArtistDetailView(artist: artists[index])) {
-                    VStack {
-                        ArtworkView(itemID: artists[index].id, imageTag: artists[index].imageTag, size: 110)
-                            .clipShape(Circle())
-                        Text(artists[index].name)
-                            .font(.caption)
-                            .lineLimit(1)
-                            .frame(width: 110)
-                    }
-                }
-                .buttonStyle(.plain)
-                .artistContextActions(artists[index])
             }
         )
     }

@@ -9,31 +9,32 @@ extension DependencyContainer {
     /// Jellyfin-only fallback (or before a session exists).
     var isSonicServerActive: Bool { sonic is SonicAPIClient }
 
-    /// Batched ID lookups / random picks straight from Jellyfin.
+    /// Batched album/artist lookups, the year list and random picks
+    /// straight from Jellyfin — calls `MusicLibraryProviding` has no
+    /// equivalent for, and that downloads cannot answer. Through the gated
+    /// session transport: a rejected token is noticed here too, and while
+    /// offline these calls fail at once instead of waiting for a timeout.
     var libraryLookup: LibraryLookupAPI? {
         guard let session else { return nil }
-        return LibraryLookupAPI(session: session)
+        return LibraryLookupAPI(session: session, transport: makeGatedSessionTransport())
     }
 
     /// Resolves track IDs from sonic results to library tracks.
     var trackResolver: TrackResolver? {
-        guard let library, let lookup = libraryLookup else { return nil }
-        return TrackResolver(library: library, lookup: lookup)
+        guard let library else { return nil }
+        return TrackResolver(library: library)
     }
 }
 
-/// Resolves ID lists to tracks: through the (possibly decorated) library for
-/// ordinary lists, in chunked requests for long ones — a mix or a ranked
-/// station can carry hundreds of IDs, too many for one query string.
+/// Resolves ID lists from sonic results (mixes, stations, adventures) to
+/// tracks through the offline-decorated library: `MusicLibraryAPI` batches
+/// long ID lists itself, and offline the downloaded part of a mix still
+/// resolves — which a direct server lookup could not do.
 struct TrackResolver: Sendable {
     let library: MusicLibraryProviding
-    let lookup: LibraryLookupAPI
 
     func tracks(byIDs ids: [String]) async throws -> [Track] {
-        if ids.count <= 80 {
-            return try await library.tracks(byIDs: ids)
-        }
-        return try await lookup.tracks(byIDs: ids)
+        try await library.tracks(byIDs: ids)
     }
 }
 
@@ -164,7 +165,7 @@ enum StationSourceFactory {
     @MainActor
     static func makeSource(for station: StationDefinition, container: DependencyContainer) -> RadioSource? {
         guard let library = container.library, let lookup = container.libraryLookup else { return nil }
-        let resolver = TrackResolver(library: library, lookup: lookup)
+        let resolver = TrackResolver(library: library)
         let sonic = container.sonic
         let capabilities = container.sonicCapabilities
         // Server stations are ranked by sound; the fallback provider would

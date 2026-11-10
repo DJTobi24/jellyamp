@@ -133,10 +133,15 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject, AudioSp
 
     private let log = Logger(subsystem: "dev.djtobi.Jellyamp", category: "Playback")
 
-    init(session: JellyfinSession, settings: AppSettings, stateModel: PlayerStateModel) {
+    /// - Parameter reportTransport: carries the playback reports. The
+    ///   container passes its session transport, so a revoked token is
+    ///   noticed while only downloaded music plays (reports are then the
+    ///   only authenticated traffic) and nothing is sent in offline mode.
+    init(session: JellyfinSession, settings: AppSettings, stateModel: PlayerStateModel,
+         reportTransport: HTTPTransport = URLSessionTransport()) {
         self.session = session
         self.settings = settings
-        self.reportSender = PlaybackReportSender(api: PlaybackReportingAPI(session: session))
+        self.reportSender = PlaybackReportSender(api: PlaybackReportingAPI(session: session, transport: reportTransport))
         self.cache = StreamingAssetCache(session: session)
         self.stateModel = stateModel
         self.sleepTimer = SleepTimer(fadeOutDuration: settings.sleepTimerFadeOut)
@@ -374,6 +379,23 @@ final class AudioEnginePlayer: NSObject, PlayerEngine, ObservableObject, AudioSp
             refreshActiveLoudness()
             requestLoudness()
         }
+    }
+
+    /// The session ends (sign-out, expired sign-in): silence everything now.
+    /// Releasing the player is not enough — a view or a pending task may
+    /// keep it alive for a moment, and music must not play on over the
+    /// sign-in screen. Sends the final "stopped" report and clears the queue
+    /// and the published state. The audio session is left as it is: the
+    /// engine of the next sign-in is created in this same process and, like
+    /// the first one, should find the session active (see `AppDelegate`).
+    func shutdown() {
+        sleepTimer.cancel()
+        publishSleepTimer()
+        cancelTransition()
+        stop()
+        queue = PlayQueue()
+        stopTicker()
+        engine.stop()
     }
 
     func startSleepTimer(duration: TimeInterval?) {

@@ -76,12 +76,17 @@ public enum StreamURLBuilder {
     /// themselves and cannot follow an HLS playlist. Not byte-seekable (no
     /// `Content-Length`, no ranges); to seek, request it again with another
     /// `startTime` — the stream then starts at that position.
+    ///
+    /// This is the one place that builds progressive transcode URLs; its
+    /// query is pinned against a real server by `JellyfinLiveTests` (mp3,
+    /// flac, m4a and ogg sources, with and without `startTime`).
     public static func progressiveTranscodeURL(
         for trackID: String,
         codec: String,
         container: String,
         maxBitrate: Int,
         startTime: TimeInterval = 0,
+        playSessionID: String = UUID().uuidString,
         session: JellyfinSession
     ) -> URL {
         var components = URLComponents(
@@ -91,7 +96,7 @@ public enum StreamURLBuilder {
         components.queryItems = [
             URLQueryItem(name: "api_key", value: session.accessToken ?? ""),
             URLQueryItem(name: "deviceId", value: session.deviceID),
-            URLQueryItem(name: "playSessionId", value: UUID().uuidString),
+            URLQueryItem(name: "playSessionId", value: playSessionID),
             URLQueryItem(name: "audioCodec", value: codec),
             URLQueryItem(name: "audioSampleRate", value: "44100"),
             URLQueryItem(name: "audioBitRate", value: String(maxBitrate)),
@@ -99,6 +104,42 @@ public enum StreamURLBuilder {
         ]
         let url = components.url!
         return startTime > 0 ? self.url(url, seekingTo: startTime) : url
+    }
+
+    /// Highest bitrate the MP3 transcode is asked for (the format's ceiling).
+    public static let maxProgressiveBitrate = 320_000
+
+    /// Stream URL for the `AVAudioEngine` player, which parses a byte stream
+    /// itself (`AudioFileStream`) and therefore cannot play HLS playlists.
+    ///
+    /// - `.directPlay` → the raw original file (byte-range seekable, so
+    ///   `startTime` is not part of the URL).
+    /// - `.transcode` → `progressiveTranscodeURL` as MP3, whatever codec the
+    ///   request names (that one is meant for the HLS path): every
+    ///   `AudioFileStream` version syncs to MP3 mid-stream and 320 kbit/s is
+    ///   transparent for a data-saver path. The bitrate is clamped to what
+    ///   MP3 can carry.
+    public static func progressiveURL(
+        for trackID: String,
+        request: StreamRequest,
+        startTime: TimeInterval = 0,
+        playSessionID: String = UUID().uuidString,
+        session: JellyfinSession
+    ) -> URL {
+        switch request {
+        case .directPlay:
+            return url(for: trackID, request: .directPlay, session: session)
+        case .transcode(_, _, let maxBitrate):
+            return progressiveTranscodeURL(
+                for: trackID,
+                codec: "mp3",
+                container: "mp3",
+                maxBitrate: min(max(maxBitrate, 64_000), maxProgressiveBitrate),
+                startTime: startTime,
+                playSessionID: playSessionID,
+                session: session
+            )
+        }
     }
 
     /// Same URL with `startTimeTicks`: seeks a *progressive* transcode

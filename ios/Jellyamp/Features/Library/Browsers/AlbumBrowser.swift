@@ -59,7 +59,7 @@ struct AlbumBrowser: View {
     private var isSearchResult: Bool { filter.searchTerm != nil }
 
     private var showsAlphabet: Bool {
-        sort.showsAlphabetIndex && !isSearchResult && !downloadedOnly && !container.settings.offlineModeEnabled && !loader.state.isInitialLoading && loader.state.blockingError == nil
+        sort.showsAlphabetIndex && !isSearchResult && !downloadedOnly && !container.offline.status.isOffline && !loader.state.isInitialLoading && loader.state.blockingError == nil
             && (alphabet.activeLetter != nil || (loader.state.totalCount ?? 0) > 60)
     }
 

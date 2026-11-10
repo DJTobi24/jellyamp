@@ -93,11 +93,9 @@ struct TrackRow: View {
                             .font(.caption)
                             .foregroundStyle(.pink)
                     }
-                    if isDownloaded {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    // Queued / progress / downloaded / failed, updating
+                    // live; nothing for a track that is not on the device.
+                    DownloadStatusBadge(trackID: track.id)
                     // The duration is part of the VoiceOver label; at large
                     // text sizes the title needs the room more.
                     if showsDuration, !largeText, track.duration >= 1 {

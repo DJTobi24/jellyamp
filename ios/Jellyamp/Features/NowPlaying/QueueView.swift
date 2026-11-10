@@ -25,6 +25,11 @@ struct QueueView: View {
                     }
                 }
                 upNextSection
+                // What could come next: renders nothing when the provider
+                // has no similarity data for the track.
+                if let current = playerState.currentTrack {
+                    SimilarTracksSection(trackID: current.id, excludingAlbumID: current.albumID, style: .listSection)
+                }
             }
             .listStyle(.plain)
             .navigationTitle("Queue")

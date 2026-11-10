@@ -64,9 +64,6 @@ final class CarPlayCoordinator: NSObject, CPTabBarTemplateDelegate, CPNowPlaying
 
     private var homeReloadTask: Task<Void, Never>?
     private var lastHomeReload = Date.distantPast
-    /// Likes toggled from the car, by track id — the player model's copy of a
-    /// track is replaced whenever the engine republishes it.
-    private var favoriteOverrides: [String: Bool] = [:]
 
     init(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
@@ -168,6 +165,17 @@ final class CarPlayCoordinator: NSObject, CPTabBarTemplateDelegate, CPNowPlaying
                 Task { @MainActor in self?.showAlert(message) }
             }
             .store(in: &cancellables)
+
+        // The heart follows the app-wide favorite state: a like given on the
+        // phone, the lock screen or by Siri shows in the car too.
+        FavoritesModel.shared.$overrides
+            .map(\.revision)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.updateNowPlayingButtons() }
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Root
@@ -178,7 +186,6 @@ final class CarPlayCoordinator: NSObject, CPTabBarTemplateDelegate, CPNowPlaying
         guard !isStopped else { return }
         downloadsCancellable = nil
         homeReloadTask?.cancel()
-        favoriteOverrides = [:]
 
         guard container.isSignedIn else {
             homeTemplate = nil
@@ -662,7 +669,7 @@ final class CarPlayCoordinator: NSObject, CPTabBarTemplateDelegate, CPNowPlaying
 
     private var isCurrentTrackFavorite: Bool {
         guard let track = container.playerState.currentTrack else { return false }
-        return favoriteOverrides[track.id] ?? track.isFavorite
+        return FavoritesModel.shared.isFavorite(track)
     }
 
     private func toggleShuffle() {
@@ -674,17 +681,14 @@ final class CarPlayCoordinator: NSObject, CPTabBarTemplateDelegate, CPNowPlaying
     }
 
     private func toggleFavorite() async {
-        guard let track = container.playerState.currentTrack else { return }
+        guard container.playerState.currentTrack != nil else { return }
         let target = !isCurrentTrackFavorite
-        // Flip the heart right away; put it back if the server refuses.
-        favoriteOverrides[track.id] = target
-        updateNowPlayingButtons()
+        // `FavoritesModel` flips the heart right away and puts it back if
+        // the server refuses; the observer above redraws the button.
         do {
             let commands = try makeCommands()
             try await commands.setCurrentTrackFavorite(target)
         } catch {
-            favoriteOverrides[track.id] = !target
-            updateNowPlayingButtons()
             showAlert(message(for: error))
         }
     }

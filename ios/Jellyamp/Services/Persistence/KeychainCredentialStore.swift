@@ -32,6 +32,18 @@ final class KeychainCredentialStore {
         return stored.session
     }
 
+    /// The server rejected the token. Drops the token but keeps who was
+    /// signed in where (server URL, user ID, display names), so the next
+    /// sign-in can tell "the same user is back" from "somebody else".
+    /// `loadSession()` then returns a session that is not authenticated.
+    func markSessionExpired() {
+        guard let data = load(key: "session"),
+              var stored = try? JSONDecoder().decode(StoredSession.self, from: data) else { return }
+        stored.accessToken = nil
+        guard let updated = try? JSONEncoder().encode(stored) else { return }
+        store(key: "session", data: updated)
+    }
+
     func saveSonicAPIKey(_ key: String) {
         store(key: "sonicApiKey", data: Data(key.utf8))
     }

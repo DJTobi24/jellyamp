@@ -101,8 +101,12 @@ struct PlaylistDetailView: View {
                         Button {
                             AppNavigator.shared.playlistRequest = PlaylistAddRequest(tracks: tracks, title: name)
                         } label: { Label("Add to Another Playlist…", systemImage: "text.badge.plus") }
-                        if let downloads = container.downloads {
-                            Button { downloads.download(tracks) } label: { Label("Download", systemImage: "arrow.down.circle") }
+                        // Only once every page is loaded: the download
+                        // covers exactly the tracks it is given.
+                        if let downloads = container.downloads, isComplete {
+                            Button {
+                                downloads.download(playlist: currentPlaylist, tracks: tracks)
+                            } label: { Label("Download", systemImage: "arrow.down.circle") }
                         }
                     }
                     ShareLink(item: name) { Label("Share…", systemImage: "square.and.arrow.up") }
@@ -150,10 +154,22 @@ struct PlaylistDetailView: View {
                 isEnabled: !tracks.isEmpty,
                 play: { container.player?.load(queue: PlayQueue(tracks: tracks, startAt: 0)) },
                 shuffle: { container.player?.playShuffled(tracks) }
-            )
+            ) {
+                // Downloads the playlist as a playlist: it then shows under
+                // Playlists in Downloads and follows later changes. Disabled
+                // until all pages are loaded (an empty track list).
+                DownloadButton(playlist: currentPlaylist, tracks: isComplete ? tracks : [])
+            }
         }
         .frame(maxWidth: .infinity)
         .listRowSeparator(.hidden)
+    }
+
+    /// The playlist as it is now (after a rename in this screen).
+    private var currentPlaylist: Playlist {
+        var current = playlist
+        current.name = name
+        return current
     }
 
     private var summary: String {
@@ -284,7 +300,7 @@ struct PlaylistDetailView: View {
         Task { @MainActor in
             do {
                 try await library.renamePlaylist(playlistID: playlist.id, name: trimmed)
-                LibraryChanges.shared.playlistsChanged()
+                LibraryChanges.shared.playlistsChanged(namesChanged: true)
             } catch {
                 name = previous
                 ToastCenter.shared.showError(String(localized: "Could not rename the playlist"), error: error)
@@ -297,7 +313,7 @@ struct PlaylistDetailView: View {
         Task { @MainActor in
             do {
                 try await library.deletePlaylist(playlistID: playlist.id)
-                LibraryChanges.shared.playlistsChanged()
+                LibraryChanges.shared.playlistsChanged(namesChanged: true)
                 dismiss()
             } catch {
                 ToastCenter.shared.showError(String(localized: "Could not delete the playlist"), error: error)

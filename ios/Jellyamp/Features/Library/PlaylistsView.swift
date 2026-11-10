@@ -108,7 +108,7 @@ struct PlaylistsView: View {
         Task { @MainActor in
             do {
                 try await library.createPlaylist(name: name, itemIDs: [])
-                LibraryChanges.shared.playlistsChanged()
+                LibraryChanges.shared.playlistsChanged(namesChanged: true)
             } catch {
                 ToastCenter.shared.showError(String(localized: "Could not create the playlist"), error: error)
             }

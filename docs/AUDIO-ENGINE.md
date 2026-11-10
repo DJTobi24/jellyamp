@@ -66,7 +66,8 @@ What is requested is decided on the main thread per track (`StreamPlan`):
    `Caches/audio/` and read locally.
 3. **Transcode** (codec not native — Vorbis, Opus, … — or bitrate above the
    cap, or "always transcode on cellular"): `/Audio/{id}/stream.mp3` via
-   `StreamURLBuilder.progressiveURL`, a progressive MP3 at the cap (max
+   `StreamURLBuilder.progressiveURL` (the MP3 flavour of
+   `progressiveTranscodeURL`), a progressive MP3 at the cap (max
    320 kbit/s). It is not byte-seekable: a seek re-requests with
    `startTimeTicks` and the source reads that stream from its first byte.
    (The HLS URL `StreamURLBuilder.url(for:request:)` builds is for AVPlayer;

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 import JellyampCore
 import JellyfinBackend
 import SonicClient
@@ -11,11 +12,10 @@ final class DependencyContainer: ObservableObject {
     @Published private(set) var session: JellyfinSession?
     @Published private(set) var sonicCapabilities = SonicCapabilities(capabilities: [])
     @Published var settings = AppSettings()
-    /// Set to present the "Add to Playlist" sheet for a track (driven from the
-    /// track ⋯ menu, which can't present a sheet itself).
-    @Published var pendingPlaylistTrack: Track?
     /// Set to present the Sonic Adventure builder starting from a track
-    /// (driven from the track ⋯ menu, like `pendingPlaylistTrack`).
+    /// (driven from the track ⋯ menu, which can't present a sheet itself).
+    /// The "Add to Playlist" sheet is requested through
+    /// `AppNavigator.playlistRequest`.
     @Published var pendingAdventureStart: Track?
 
     private(set) var library: MusicLibraryProviding?
@@ -31,8 +31,9 @@ final class DependencyContainer: ObservableObject {
     /// Lock screen / Control Center / interruption handling; alive as long
     /// as a session is active.
     private var systemMedia: SystemMediaController?
-    /// Single shared bridge the player views observe; the active `EnginePlayer`
-    /// pushes state into it. Lives for the whole app session.
+    /// Single shared bridge the player views observe; the active
+    /// `AudioEnginePlayer` pushes state into it. Lives for the whole app
+    /// session.
     let playerState = PlayerStateModel()
     /// Last.fm / ListenBrainz scrobbling; follows `playerState` while signed in.
     let scrobbling = ScrobbleService()
@@ -46,6 +47,7 @@ final class DependencyContainer: ObservableObject {
     private var playHistory: [String] = []
     private var isRefillingRadio = false
     private var cancellables: Set<AnyCancellable> = []
+    private var settingsObserver: AnyCancellable?
 
     private let credentialStore = KeychainCredentialStore()
     private let settingsStore = UserDefaultsSettingsStore()
@@ -78,15 +80,36 @@ final class DependencyContainer: ObservableObject {
         await task.value
     }
 
-    func bootstrap() async {
+    /// Only through `ensureBootstrapped()`.
+    private func bootstrap() async {
         settings = settingsStore.loadSettings()
-        if let stored = credentialStore.loadSession() {
-            account = credentialStore.loadAccount()
-            await activate(session: stored)
-            // Not awaited: launch (and offline playback) must not wait for
-            // the network.
-            Task { await validateStoredSession() }
+        // Every change of `settings` is saved and handed to the engine, the
+        // scrobbler and (through its own observer) the offline coordinator,
+        // whichever screen made it. The settings screens were written by
+        // different slices — some saved on every change, some when they
+        // disappeared — and a toggle changed from a screen of the second
+        // kind did not reach the running engine until then.
+        settingsObserver = $settings
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                // `@Published` emits before the value is stored.
+                Task { @MainActor [weak self] in self?.saveSettings() }
+            }
+        installFavoritesHooks()
+        guard let stored = credentialStore.loadSession() else { return }
+        guard stored.isAuthenticated else {
+            // The last run ended with an expired sign-in (`expireSession`):
+            // downloads and settings are still here, waiting for the same
+            // user to sign in again.
+            signedOutNotice = Self.sessionExpiredNotice
+            return
         }
+        account = credentialStore.loadAccount()
+        await activate(session: stored)
+        // Not awaited: launch (and offline playback) must not wait for
+        // the network.
+        Task { await validateStoredSession() }
     }
 
     // MARK: - Sign-in / session lifecycle
@@ -98,15 +121,25 @@ final class DependencyContainer: ObservableObject {
     @Published var signedOutNotice: String?
     private var isRevalidatingSession = false
 
+    private static var sessionExpiredNotice: String {
+        String(localized: "Your Jellyfin server no longer accepts this device's sign-in. Please sign in again. Your downloads and settings are still here.")
+    }
+
     /// Unauthenticated session for the onboarding flows (password sign-in,
     /// Quick Connect) against a server found by `JellyfinServerDiscovery`.
     func makeSignInSession(server: JellyfinServerInfo) -> JellyfinSession {
-        JellyfinSession(serverURL: server.url, deviceID: Self.persistentDeviceID())
+        Self.identified(JellyfinSession(serverURL: server.url, deviceID: Self.persistentDeviceID()))
     }
 
     /// Persists and activates a session produced by `JellyfinAuthenticator`
     /// (`signIn` or `signInWithQuickConnect`).
     func completeSignIn(_ result: JellyfinSignInResult, server: JellyfinServerInfo) async {
+        // After an expired sign-in the previous user's downloads, caches and
+        // linked accounts are still on the device. The same user picks them
+        // up again; anybody else must not inherit them.
+        if let previous = credentialStore.loadSession(), !Self.isSameUser(previous, result.session) {
+            wipeLocalData(downloads: nil)
+        }
         let account = JellyfinAccount(serverName: server.name, serverVersion: server.version, userName: result.userName)
         credentialStore.save(session: result.session, account: account)
         self.account = account
@@ -124,8 +157,7 @@ final class DependencyContainer: ObservableObject {
         switch await JellyfinAuthenticator().validate(session: current) {
         case .rejected:
             guard session == current else { return }
-            signedOutNotice = String(localized: "Your Jellyfin server no longer accepts this device's sign-in. Please sign in again.")
-            signOut()
+            expireSession()
         case .valid(let userName):
             // Refresh what Settings → Account shows (server renamed/updated).
             var refreshed = account ?? JellyfinAccount()
@@ -143,8 +175,10 @@ final class DependencyContainer: ObservableObject {
     }
 
     /// Transport for the API clients: any 401 on an authenticated request
-    /// triggers a re-validation, which signs out if the token is really dead.
-    private func makeSessionTransport() -> HTTPTransport {
+    /// triggers a re-validation, which ends the session if the token is
+    /// really dead. For clients that are routed offline by a decorator
+    /// (`library`, `browser`).
+    func makeSessionTransport() -> HTTPTransport {
         UnauthorizedReportingTransport { [weak self] in
             Task { @MainActor [weak self] in
                 await self?.validateStoredSession()
@@ -152,55 +186,137 @@ final class DependencyContainer: ObservableObject {
         }
     }
 
-    func signIn(serverURL: URL, username: String, password: String) async throws {
-        let fresh = JellyfinSession(serverURL: serverURL, deviceID: Self.persistentDeviceID())
-        let authenticated = try await JellyfinAuthenticator().authenticateByName(
-            session: fresh,
-            username: username,
-            password: password
+    /// The session transport for clients that have nothing to serve offline
+    /// (ID lookups, stations, Instant Mix, playback reports): while offline
+    /// they fail at once instead of running into a timeout, and their
+    /// request outcomes feed the same offline state as the library's.
+    ///
+    /// - Parameter marksUnreachable: false for background traffic whose
+    ///   failure should not switch the app to downloads (playback reports).
+    func makeGatedSessionTransport(marksUnreachable: Bool = true) -> HTTPTransport {
+        OfflineGatedTransport(
+            base: makeSessionTransport(),
+            state: offline.status.tracker,
+            marksUnreachable: marksUnreachable
         )
-        credentialStore.save(session: authenticated)
-        await activate(session: authenticated)
     }
 
+    /// "Sign Out" chosen by the user: the device forgets the account and
+    /// everything that belongs to it — downloads, cached library data, the
+    /// sonic server key and the linked scrobbling accounts.
     func signOut() {
         if let ending = session, ending.isAuthenticated {
             // Best effort: revoke the token server-side; never blocks or
             // fails the local sign-out (which must work offline).
             Task.detached { await JellyfinAuthenticator().logout(session: ending) }
         }
-        account = nil
+        let downloads = self.downloads
+        tearDownSession()
         credentialStore.clear()
-        LibraryCache.clearAll()
-        session = nil
-        library = nil
-        sonic = nil
-        player = nil
-        systemMedia = nil
-        libraryCache = nil
-        offline.deactivate()
-        downloads?.clearAll()
-        downloads = nil
+        wipeLocalData(downloads: downloads)
+    }
+
+    /// The server rejected the token (revoked, expired, device removed).
+    /// Nobody asked for this: gigabytes of downloads and the user's settings
+    /// must not disappear because an admin restarted something. Everything
+    /// stays on the device, only the session ends; onboarding explains why
+    /// and offers the same server again. `completeSignIn` wipes the data if
+    /// somebody else signs in instead.
+    private func expireSession() {
+        guard session != nil else { return }
+        // Their URLs carry the dead token; they restart after the next sign-in.
+        downloads?.suspendTransfers()
+        tearDownSession()
+        credentialStore.markSessionExpired()
+        signedOutNotice = Self.sessionExpiredNotice
+    }
+
+    /// Stops everything that lives only while a session is active. Leaves
+    /// what is stored on the device alone.
+    private func tearDownSession() {
+        // Explicitly, not by releasing it: something may still hold the
+        // engine for a moment. Also sends the final "stopped" report and
+        // clears `playerState`, which the lock screen follows.
+        player?.shutdown()
+        stations.stop()
+        scrobbling.stop()
         cancellables.removeAll()
         playHistory = []
-        // Scrobbling accounts are personal: forget them with the session.
+        isRefillingRadio = false
+        systemMedia = nil
+        player = nil
+        offline.deactivate()
+        downloads = nil
+        library = nil
+        sonic = nil
+        sonicCapabilities = SonicCapabilities(capabilities: [])
+        libraryCache = nil
+        account = nil
+        pendingAdventureStart = nil
+        FavoritesModel.shared.reset()
+        // Last: observers of `$session` (root view, CarPlay, Siri/Spotlight
+        // integration) then find everything else already gone.
+        session = nil
+    }
+
+    /// Removes what belongs to an account from the device.
+    /// - Parameter downloads: the account's download manager if one is alive.
+    private func wipeLocalData(downloads: DownloadManager?) {
+        LibraryCache.clearAll()
+        if let downloads {
+            downloads.clearAll()
+        } else {
+            BackgroundDownloadSession.shared.cancelAll()
+            DownloadStore.wipe()
+        }
+        credentialStore.clearSonicAPIKey()
+        // Scrobbling accounts are personal: forget them with the account.
         scrobbling.signOut()
         settings.scrobbling = ScrobblingSettings()
         settingsStore.save(settings)
-        stations.stop()
     }
 
-    private func activate(session: JellyfinSession) async {
+    /// Jellyfin user IDs are GUIDs generated per server, so the ID alone
+    /// identifies "this user on this server" — also when the server is
+    /// reached under another address (LAN vs. public name) the next time.
+    private static func isSameUser(_ lhs: JellyfinSession, _ rhs: JellyfinSession) -> Bool {
+        func canonical(_ id: String?) -> String? {
+            id.map { $0.replacingOccurrences(of: "-", with: "").lowercased() }
+        }
+        guard let left = canonical(lhs.userID), let right = canonical(rhs.userID) else { return false }
+        return left == right
+    }
+
+    private func activate(session newSession: JellyfinSession) async {
+        // Never two engines or two sets of remote-command handlers.
+        if player != nil {
+            player?.shutdown()
+            systemMedia = nil
+        }
+        let session = Self.identified(newSession)
         self.session = session
         libraryCache = LibraryCache(scope: session.userID ?? "default")
-        downloads = DownloadManager(session: session)
-        library = MusicLibraryAPI(session: session, transport: makeSessionTransport())
-        // Serve downloads when offline mode is on or the server is unreachable.
-        if let downloads, let online = library {
-            library = offline.activate(wrapping: online, downloads: downloads, container: self)
+        let downloads = DownloadManager(session: session)
+        // A download refused with 401 is as good a hint as an API call.
+        downloads.onUnauthorized = { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.validateStoredSession()
+            }
         }
+        self.downloads = downloads
+        // Serve downloads when offline mode is on or the server is unreachable.
+        library = offline.activate(
+            wrapping: MusicLibraryAPI(session: session, transport: makeSessionTransport()),
+            downloads: downloads,
+            container: self
+        )
         // Crossfade-capable engine (mixes two nodes).
-        let engine = AudioEnginePlayer(session: session, settings: settings, stateModel: playerState)
+        let engine = AudioEnginePlayer(
+            session: session,
+            settings: settings,
+            stateModel: playerState,
+            reportTransport: makeGatedSessionTransport(marksUnreachable: false)
+        )
         player = engine
         if let preset = EQPreset.builtIn(id: settings.activeEQPresetID) {
             engine.apply(eqPreset: preset)
@@ -219,10 +335,50 @@ final class DependencyContainer: ObservableObject {
             guard let library = await self?.library else { return nil }
             return (try? await library.album(id: albumID))?.normalizationGainDB
         }
-        systemMedia = SystemMediaController(player: engine, playerState: playerState, session: session)
+        // The lock screen's like command goes the same way as every heart
+        // in the app (`FavoritesModel`).
+        systemMedia = SystemMediaController(
+            player: engine,
+            playerState: playerState,
+            session: session,
+            isFavorite: { track in FavoritesModel.shared.isFavorite(track) },
+            setFavorite: { [weak self] track, isFavorite in
+                Task { @MainActor [weak self] in
+                    try? await FavoritesModel.shared.set(
+                        itemID: track.id,
+                        isFavorite: isFavorite,
+                        serverValue: track.isFavorite,
+                        library: self?.library
+                    )
+                }
+            }
+        )
         setupAutoplay()
         scrobbling.start(playerState: playerState, settings: settings.scrobbling)
         await rewireSonicProvider()
+    }
+
+    // MARK: - Favorites
+
+    /// Connects `FavoritesModel` to the parts that keep their own copy of
+    /// the flag or depend on the set of favorites. Installed once.
+    private func installFavoritesHooks() {
+        let favorites = FavoritesModel.shared
+        favorites.onChange = { [weak self] itemID, isFavorite in
+            // Queued copies of the track, and through `playerState` the Now
+            // Playing screen, the lock screen and CarPlay.
+            self?.player?.setFavorite(trackID: itemID, isFavorite: isFavorite)
+        }
+        favorites.onConfirmed = { [weak self] in
+            guard let self else { return }
+            // Favorite artists and albums are names Siri is told about.
+            SystemIntegration.shared.refreshShortcutParameters()
+            // "Auto-download favorites" follows the heart.
+            let rules = self.settings.smartSync
+            if rules.autoDownloadFavorites || rules.autoDownloadFavoriteAlbums {
+                self.offline.requestSync()
+            }
+        }
     }
 
     // MARK: - Autoplay / radio
@@ -289,7 +445,9 @@ final class DependencyContainer: ObservableObject {
             // Also taken while a freshly installed sonic server has not analyzed
             // anything yet (it reports no capabilities): Jellyfin's Instant Mix
             // keeps working until the first scan finishes.
-            let fallback = JellyfinFallbackSonicProvider(source: InstantMixAdapter(api: InstantMixAPI(session: session, transport: makeSessionTransport())))
+            let fallback = JellyfinFallbackSonicProvider(
+                source: InstantMixAdapter(api: InstantMixAPI(session: session, transport: makeGatedSessionTransport()))
+            )
             sonic = fallback
             sonicCapabilities = fallback.capabilities
         }
@@ -312,10 +470,28 @@ final class DependencyContainer: ObservableObject {
     /// The stored jellyamp-server key, for "Test connection" without retyping.
     var storedSonicAPIKey: String? { credentialStore.loadSonicAPIKey() }
 
+    /// Persists and applies the current settings. Runs by itself after every
+    /// change (see `bootstrap`); calling it directly is only needed when the
+    /// effect must not wait for the next main-actor turn.
     func saveSettings() {
         settingsStore.save(settings)
         player?.updateSettings(settings)
         scrobbling.apply(settings.scrobbling)
+    }
+
+    /// Stamps the session with what the server's device list should show:
+    /// the kind of device and the real app version (the package defaults are
+    /// placeholders). Not persisted — applied to every session we activate.
+    private static func identified(_ session: JellyfinSession) -> JellyfinSession {
+        var session = session
+        // The name travels inside a quoted header value: plain ASCII only.
+        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_.")
+        let name = String(UIDevice.current.name.filter { allowed.contains($0) }).trimmingCharacters(in: .whitespaces)
+        session.deviceName = name.isEmpty ? UIDevice.current.model : name
+        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String, !version.isEmpty {
+            session.clientVersion = version
+        }
+        return session
     }
 
     private static func persistentDeviceID() -> String {

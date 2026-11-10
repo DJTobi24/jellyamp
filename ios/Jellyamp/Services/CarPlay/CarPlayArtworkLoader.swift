@@ -55,7 +55,10 @@ final class CarPlayArtworkLoader {
         }
         waiting[key] = [completion]
 
-        let url = ImageURLBuilder.url(itemID: artwork.itemID, tag: artwork.imageTag, maxWidth: pixelWidth, session: session)
+        // Covers of downloaded music are on disk (like `ArtworkView` on the
+        // phone): the Downloads tab keeps its artwork without a connection.
+        let url = DownloadArtworkStore.localURL(itemID: artwork.itemID)
+            ?? ImageURLBuilder.url(itemID: artwork.itemID, tag: artwork.imageTag, maxWidth: pixelWidth, session: session)
         let urlSession = self.urlSession
         Task { [weak self] in
             let image = await Self.fetch(url: url, urlSession: urlSession, pointSize: pointSize, scale: scale)

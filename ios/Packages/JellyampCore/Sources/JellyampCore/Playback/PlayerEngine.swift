@@ -63,6 +63,9 @@ public protocol PlayerEngine: AnyObject {
     /// Mirror a favorite change into the queued copies of a track so the
     /// player UI and lock screen stay in sync. Does not talk to the server.
     func setFavorite(trackID: String, isFavorite: Bool)
+    /// The session ends: stop all audio at once, send the final playback
+    /// report and forget the queue. The engine is not used afterwards.
+    func shutdown()
 }
 
 public extension PlayerEngine {
@@ -70,4 +73,5 @@ public extension PlayerEngine {
     func playFromHistory(at historyIndex: Int) {}
     func setRepeatMode(_ mode: RepeatMode) {}
     func setFavorite(trackID: String, isFavorite: Bool) {}
+    func shutdown() {}
 }

@@ -161,6 +161,7 @@ struct OnboardingView: View {
                 }
             }
             .accessibilityElement(children: .combine)
+            insecureConnectionHint(for: server)
         } else if model.isCheckingServer {
             Text("Looking for a Jellyfin server…")
                 .font(.footnote)
@@ -181,6 +182,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 16) {
             if let server = model.server {
                 serverSummary(server)
+                insecureConnectionHint(for: server)
             }
             if model.quickConnectAvailable {
                 Picker("Sign-in method", selection: methodBinding) {
@@ -195,6 +197,22 @@ struct OnboardingView: View {
             case .quickConnect:
                 quickConnectCard
             }
+        }
+    }
+
+    /// Plain HTTP is normal for a server on the home network and allowed on
+    /// purpose. Against a public address it sends the password and the
+    /// sign-in token readable across the internet — worth a note, but the
+    /// user's call: nothing is blocked. `ServerHostPrivacy` (JellyfinBackend)
+    /// decides which hosts count as private.
+    @ViewBuilder
+    private func insecureConnectionHint(for server: JellyfinServerInfo) -> some View {
+        if ServerHostPrivacy.sendsCredentialsInClearText(to: server.url) {
+            OnboardingMessage(
+                text: String(localized: "This connection is not encrypted. Over the internet, others on the network could read your password. If your server offers it, use its https:// address instead."),
+                systemImage: "lock.open.fill",
+                color: .yellow
+            )
         }
     }
 

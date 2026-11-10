@@ -26,7 +26,7 @@ struct ArtistBrowser: View {
     private var isSearchResult: Bool { filter.searchTerm != nil }
 
     private var showsAlphabet: Bool {
-        sort.showsAlphabetIndex && !isSearchResult && !container.settings.offlineModeEnabled && !loader.state.isInitialLoading && loader.state.blockingError == nil
+        sort.showsAlphabetIndex && !isSearchResult && !container.offline.status.isOffline && !loader.state.isInitialLoading && loader.state.blockingError == nil
             && (alphabet.activeLetter != nil || (loader.state.totalCount ?? 0) > 60)
     }
 

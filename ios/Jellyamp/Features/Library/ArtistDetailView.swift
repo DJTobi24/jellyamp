@@ -89,6 +89,7 @@ struct ArtistDetailView: View {
     @ViewBuilder
     private var headerAccessories: some View {
         FavoriteButton(itemID: artist.id, isFavorite: current.isFavorite)
+        ArtistDownloadButton(artist: current)
         ArtistMenuButton(artist: current)
     }
 
@@ -209,7 +210,11 @@ struct ArtistDetailView: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
                 .listRowSeparator(.hidden)
             } header: {
-                sectionHeader(String(localized: "Fans Also Like"))
+                sectionHeader(
+                    container.isSonicServerActive && container.sonicCapabilities.supports(.similar)
+                        ? String(localized: "Sonically Similar Artists")
+                        : String(localized: "Fans Also Like")
+                )
             }
         }
     }
@@ -298,7 +303,16 @@ struct ArtistDetailView: View {
         let detailTask = Task { try? await library.artist(id: artistID) }
         let topTask = Task { try? await library.topTracks(byArtist: artistID, limit: 5) }
         let appearsTask = Task { try? await browser.appearsOn(artistID: artistID) }
-        let similarTask = Task { try? await library.similarArtists(artistID: artistID, limit: 12) }
+        // One "similar artists" row: ranked by sound when jellyamp-server
+        // is connected, Jellyfin's genre-based list otherwise.
+        let usesSonicServer = container.isSonicServerActive && container.sonicCapabilities.supports(.similar)
+        let similarTask = Task { @MainActor () -> [Artist]? in
+            if usesSonicServer {
+                let ranked = await SimilarLoader.artists(similarTo: artistID, limit: 12, container: container)
+                if !ranked.isEmpty { return ranked }
+            }
+            return try? await library.similarArtists(artistID: artistID, limit: 12)
+        }
 
         var failure: String?
         do {
