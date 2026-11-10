@@ -46,6 +46,8 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
     private weak var node: AVAudioPlayerNode?
     private var onEnd: (() -> Void)?
     private var isRunning = false
+    /// `stop()` was called: whatever the network still delivers is ignored.
+    private var stopped = false
     private var networkDone = false
     private var pendingFrames: AVAudioFrameCount = 0
     private var targetFrames: AVAudioFrameCount = 0
@@ -370,6 +372,7 @@ final class StreamingAudioSource: NSObject, @unchecked Sendable {
         queue.async { [weak self] in
             guard let self else { return }
             self.isRunning = false
+            self.stopped = true
             self.onEnd = nil
             self.dataTask?.cancel()
             self.session?.invalidateAndCancel()
@@ -405,7 +408,13 @@ extension StreamingAudioSource: URLSessionDataDelegate {
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         queue.async { [weak self] in
-            guard let self, self.isRunning || !self.resolvedFormat else { return }
+            // Every byte counts until `stop()`. In particular the bytes
+            // that arrive after the header was parsed but before
+            // `beginScheduling` (the player starts the source from the main
+            // thread, a moment later): dropping those cut a hole into the
+            // track, and on a fast server — where the whole file arrives in
+            // that moment — ended it after the first few seconds.
+            guard let self, !self.stopped else { return }
             if !self.loggedFirstBytes {
                 self.loggedFirstBytes = true
                 self.log.info("stream first bytes: \(data.count, privacy: .public)")
