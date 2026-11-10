@@ -124,6 +124,20 @@ jobs:
           python3 scripts/ci/export-xcresult-attachments.py \
             ios/build/Screenshots-de-${{ matrix.family }}.xcresult ios/build/screenshots/de-DE --suffix ${{ matrix.family }}
           find ios/build/screenshots -name '*.png' | sort || true
+      # Review aid for people (and agents) who cannot download artifacts:
+      # with [print-shots] in the commit message, small JPEG previews of the
+      # screenshots are written to the job log as base64 between @@SHOT and
+      # @@END markers.
+      - name: Print screenshot previews
+        if: always() && contains(github.event.head_commit.message, '[print-shots]')
+        run: |
+          find ios/build/screenshots -name '*.png' | sort | while read -r shot; do
+            sips -Z 720 -s format jpeg -s formatOptions 50 "$shot" --out /tmp/preview.jpg >/dev/null 2>&1 || continue
+            echo "@@SHOT ${shot#ios/build/screenshots/}"
+            base64 -i /tmp/preview.jpg | tr -d '\n'
+            echo
+            echo "@@END"
+          done
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
