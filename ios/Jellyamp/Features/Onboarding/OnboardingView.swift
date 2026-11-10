@@ -83,6 +83,16 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
             Link("Learn more at jellyfin.org", destination: URL(string: "https://jellyfin.org")!)
                 .foregroundStyle(.white.opacity(0.85))
+            // No server needed: lets App Review and the curious look around
+            // in a built-in sample library (Support/Demo).
+            Button("Try the Demo") {
+                Task { await container.enterDemoMode() }
+            }
+            .fontWeight(.semibold)
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.top, 10)
+            .accessibilityHint("Opens a sample music library that needs no server")
+            .accessibilityIdentifier(AccessibilityID.Onboarding.demoButton)
         }
         .font(.footnote)
         .padding(.top, 8)
@@ -120,6 +130,7 @@ struct OnboardingView: View {
                 .onSubmit { model.continueFromServer() }
                 .onboardingField()
                 .accessibilityLabel("Server address")
+                .accessibilityIdentifier(AccessibilityID.Onboarding.serverAddress)
 
             serverStatus
 
@@ -136,6 +147,7 @@ struct OnboardingView: View {
             }
             .buttonStyle(OnboardingPrimaryButtonStyle())
             .disabled(!model.canContinue)
+            .accessibilityIdentifier(AccessibilityID.Onboarding.continueButton)
 
             Text("Examples: jellyfin.example.com, 192.168.1.5:8096 or https://example.com/jellyfin")
                 .font(.footnote)
@@ -235,6 +247,7 @@ struct OnboardingView: View {
                 .focused($focus, equals: .username)
                 .onSubmit { focus = .password }
                 .onboardingField()
+                .accessibilityIdentifier(AccessibilityID.Onboarding.username)
 
             SecureField("Password", text: $model.password)
                 .textContentType(.password)
@@ -242,6 +255,7 @@ struct OnboardingView: View {
                 .focused($focus, equals: .password)
                 .onSubmit { model.signInWithPassword(container: container) }
                 .onboardingField()
+                .accessibilityIdentifier(AccessibilityID.Onboarding.password)
 
             if let message = model.signInError {
                 OnboardingMessage(text: message, systemImage: "exclamationmark.triangle.fill", color: .onboardingError)
@@ -261,6 +275,7 @@ struct OnboardingView: View {
             }
             .buttonStyle(OnboardingPrimaryButtonStyle())
             .disabled(!model.canSignIn)
+            .accessibilityIdentifier(AccessibilityID.Onboarding.signIn)
         }
         .disabled(model.isSigningIn)
     }

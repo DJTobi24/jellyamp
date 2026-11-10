@@ -79,13 +79,49 @@ final class DependencyContainer: ObservableObject {
     }
 
     func bootstrap() async {
+        LaunchOptions.applyAtLaunch()
         settings = settingsStore.loadSettings()
+        if DemoMode.shouldStartAtLaunch {
+            // Before the Keychain is read: a demo launch must neither use
+            // nor disturb a real sign-in.
+            await enterDemoMode()
+            return
+        }
+        if LaunchOptions.resetState {
+            // A clean-slate launch (UI tests) shows onboarding even on a
+            // device that is signed in; the stored session stays untouched.
+            return
+        }
         if let stored = credentialStore.loadSession() {
             account = credentialStore.loadAccount()
             await activate(session: stored)
             // Not awaited: launch (and offline playback) must not wait for
             // the network.
             Task { await validateStoredSession() }
+        }
+    }
+
+    // MARK: - Demo mode
+
+    /// True while the app is signed in to the built-in sample library
+    /// (`DemoMode`) instead of a Jellyfin server.
+    @Published private(set) var isDemoMode = false
+
+    /// Signs in to the built-in sample library. Nothing is written to the
+    /// Keychain: a stored session of a real server stays as it is.
+    func enterDemoMode() async {
+        guard !isSignedIn else { return }
+        do {
+            // Remembered only when the user chose it; a launch argument
+            // applies to that launch alone.
+            let demoSession = try DemoMode.shared.start(deviceID: Self.persistentDeviceID(), remember: !LaunchOptions.demo)
+            isDemoMode = true
+            account = DemoMode.shared.account
+            signedOutNotice = nil
+            await activate(session: demoSession)
+        } catch {
+            isDemoMode = false
+            signedOutNotice = String(localized: "The demo library could not be started. Please try again.")
         }
     }
 
@@ -118,6 +154,8 @@ final class DependencyContainer: ObservableObject {
     /// (HTTP 401) signs the user out; an unreachable server changes nothing,
     /// so downloaded music stays playable offline.
     func validateStoredSession() async {
+        // The demo session is not a stored one and must never become one.
+        guard !isDemoMode else { return }
         guard let current = session, current.isAuthenticated, !isRevalidatingSession else { return }
         isRevalidatingSession = true
         defer { isRevalidatingSession = false }
@@ -170,7 +208,12 @@ final class DependencyContainer: ObservableObject {
             Task.detached { await JellyfinAuthenticator().logout(session: ending) }
         }
         account = nil
-        credentialStore.clear()
+        // Leaving the demo must not sign the user out of a real server whose
+        // session is still in the Keychain (launch-argument demo).
+        let leavingDemo = isDemoMode
+        if !leavingDemo {
+            credentialStore.clear()
+        }
         LibraryCache.clearAll()
         session = nil
         library = nil
@@ -183,10 +226,17 @@ final class DependencyContainer: ObservableObject {
         downloads = nil
         cancellables.removeAll()
         playHistory = []
-        // Scrobbling accounts are personal: forget them with the session.
-        scrobbling.signOut()
-        settings.scrobbling = ScrobblingSettings()
-        settingsStore.save(settings)
+        if leavingDemo {
+            // Scrobbling never ran in the demo; the user's scrobbling
+            // accounts are not the demo's to remove.
+            isDemoMode = false
+            DemoMode.shared.stop()
+        } else {
+            // Scrobbling accounts are personal: forget them with the session.
+            scrobbling.signOut()
+            settings.scrobbling = ScrobblingSettings()
+            settingsStore.save(settings)
+        }
         stations.stop()
     }
 
@@ -221,7 +271,10 @@ final class DependencyContainer: ObservableObject {
         }
         systemMedia = SystemMediaController(player: engine, playerState: playerState, session: session)
         setupAutoplay()
-        scrobbling.start(playerState: playerState, settings: settings.scrobbling)
+        // Made-up tracks have no business on someone's Last.fm profile.
+        if !isDemoMode {
+            scrobbling.start(playerState: playerState, settings: settings.scrobbling)
+        }
         await rewireSonicProvider()
     }
 
@@ -279,6 +332,14 @@ final class DependencyContainer: ObservableObject {
     /// Jellyfin-only fallback. The UI follows `sonicCapabilities`.
     func rewireSonicProvider() async {
         guard let session else { return }
+        if isDemoMode, let demoURL = DemoMode.shared.baseURL,
+           case .available(let capabilities) = await SonicServerDiscovery().probe(baseURL: demoURL, apiKey: DemoMode.shared.sonicAPIKey) {
+            // The demo server also answers the Sonic API, so the sample
+            // library shows Mixes for You and Sonic Adventure.
+            sonic = SonicAPIClient(baseURL: demoURL, apiKey: DemoMode.shared.sonicAPIKey)
+            sonicCapabilities = capabilities
+            return
+        }
         if let url = settings.sonicServerURL,
            let apiKey = credentialStore.loadSonicAPIKey(),
            case .available(let capabilities) = await SonicServerDiscovery().probe(baseURL: url, apiKey: apiKey),

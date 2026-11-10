@@ -67,6 +67,7 @@ struct LyricsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close Lyrics")
+            .accessibilityIdentifier(AccessibilityID.Lyrics.close)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
@@ -132,6 +133,7 @@ struct LyricsView: View {
                     ForEach(Array(timeline.lines.enumerated()), id: \.offset) { index, line in
                         lyricLine(line, index: index, isSynced: timeline.isSynced)
                             .id(index)
+                            .accessibilityIdentifier(AccessibilityID.Lyrics.line(index))
                     }
                 }
                 .padding(.horizontal, 24)

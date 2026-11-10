@@ -129,6 +129,7 @@ struct HomeView: View {
                     MixCard(mix: mix, size: metrics.cardSize)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(AccessibilityID.Home.mix(mix.id))
                 .contextMenu {
                     Button {
                         play(mix: mix, shuffled: false)
@@ -174,6 +175,7 @@ struct HomeView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(AccessibilityID.Home.adventure)
         .frame(maxWidth: 640, alignment: .leading)
         .padding(.horizontal, metrics.inset)
     }
@@ -185,6 +187,7 @@ struct HomeView: View {
                     AlbumCard(album: album, size: metrics.cardSize)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(AccessibilityID.Home.album(album.id))
                 .albumContextActions(album)
             }
         }
@@ -199,6 +202,7 @@ struct HomeView: View {
                     TrackCard(track: track, size: metrics.trackCardSize)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(AccessibilityID.Home.track(track.id))
                 .trackContextActions(track)
             }
         }

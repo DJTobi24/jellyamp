@@ -17,6 +17,7 @@ struct DownloadsView: View {
                         systemImage: "arrow.down.circle",
                         description: "Downloaded music will appear here for offline listening."
                     )
+                    .accessibilityIdentifier(AccessibilityID.Downloads.empty)
                 }
             }
             .navigationTitle("Downloads")
@@ -28,6 +29,7 @@ struct DownloadsView: View {
                         Image(systemName: "gearshape")
                     }
                     .accessibilityLabel("Download Settings")
+                    .accessibilityIdentifier(AccessibilityID.Downloads.settings)
                 }
             }
         }
@@ -176,6 +178,7 @@ private struct DownloadQueueRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(entry.track.title)
                     .lineLimit(1)
+                    .accessibilityIdentifier(AccessibilityID.Downloads.queued(entry.track.id))
                 if entry.phase == .downloading, let fraction {
                     ProgressView(value: fraction)
                 } else {
@@ -251,6 +254,7 @@ private struct DownloadedAlbumsSection: View {
                             subtitle: subtitle(for: album)
                         )
                     }
+                    .accessibilityIdentifier(AccessibilityID.Downloads.collection(album.id))
                 }
                 .onDelete { offsets in
                     for index in offsets { downloads.removeAlbum(id: albums[index].id) }

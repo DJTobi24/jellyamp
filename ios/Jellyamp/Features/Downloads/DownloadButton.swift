@@ -64,6 +64,7 @@ private struct DownloadButtonContent: View {
         .buttonStyle(.plain)
         .disabled(target.tracks.isEmpty)
         .accessibilityLabel(accessibilityLabel(for: state))
+        .accessibilityIdentifier(AccessibilityID.Collection.download)
         .confirmationDialog("Remove this download?", isPresented: $confirmsRemoval, titleVisibility: .visible) {
             Button("Remove Download", role: .destructive) { remove() }
             Button("Cancel", role: .cancel) {}

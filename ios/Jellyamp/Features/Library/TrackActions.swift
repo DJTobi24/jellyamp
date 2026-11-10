@@ -245,9 +245,11 @@ private struct TrackActionButtons: View {
         Button {
             actions.playNext([track])
         } label: { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+        .accessibilityIdentifier(AccessibilityID.TrackMenu.playNext)
         Button {
             actions.enqueue([track])
         } label: { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+        .accessibilityIdentifier(AccessibilityID.TrackMenu.addToQueue)
         Button {
             actions.instantMix(from: track)
         } label: { Label("Instant Mix", systemImage: "wand.and.stars") }
@@ -262,9 +264,11 @@ private struct TrackActionButtons: View {
                 Label("Add to Liked Songs", systemImage: "heart")
             }
         }
+        .accessibilityIdentifier(AccessibilityID.TrackMenu.toggleFavorite)
         Button {
             actions.addToPlaylist([track], title: track.title)
         } label: { Label("Add to Playlist…", systemImage: "text.badge.plus") }
+        .accessibilityIdentifier(AccessibilityID.TrackMenu.addToPlaylist)
         if let albumID = track.albumID, albumID != context.albumID {
             Button {
                 actions.open(LibraryRoute.albumRoute(for: track))
@@ -569,5 +573,6 @@ struct FavoriteButton: View {
         .accessibilityLabel(Text("Favorite"))
         .accessibilityValue(isFavorite ? Text("On") : Text("Off"))
         .accessibilityAddTraits(isFavorite ? .isSelected : [])
+        .accessibilityIdentifier(AccessibilityID.Collection.favorite(isOn: isFavorite))
     }
 }

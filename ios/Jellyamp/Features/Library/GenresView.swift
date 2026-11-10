@@ -23,6 +23,7 @@ struct GenresView: View {
                             GenreTile(name: genre.name)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier(AccessibilityID.Item.genre(genre.id))
                         .onAppear { loader.loadMoreIfNeeded(showing: genre) }
                     }
                 }

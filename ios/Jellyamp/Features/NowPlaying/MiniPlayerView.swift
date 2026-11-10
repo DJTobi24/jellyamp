@@ -50,6 +50,7 @@ struct MiniPlayerView: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(infoLabel(for: track))
                 .accessibilityHint("Opens the player")
+                .accessibilityIdentifier(AccessibilityID.MiniPlayer.open)
                 .accessibilityAction(named: Text("Next Track")) { container.player?.skipToNext() }
                 .accessibilityAction(named: Text("Previous Track")) { container.player?.skipToPrevious() }
 
@@ -74,6 +75,7 @@ struct MiniPlayerView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(playerState.isPlaying || playerState.isLoading ? "Pause" : "Play")
+                .accessibilityIdentifier(AccessibilityID.MiniPlayer.playPause(isPlaying: playerState.isPlaying || playerState.isLoading))
             }
             .padding(.leading, 12)
             .padding(.trailing, 4)

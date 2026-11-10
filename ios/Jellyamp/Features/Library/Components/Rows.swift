@@ -120,6 +120,7 @@ struct TrackRow: View {
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, play)
         .trackAccessibilityActions(track)
+        .accessibilityIdentifier(AccessibilityID.Item.track(track.id))
         .onReceive(container.playerState.$currentTrack.map { $0?.id }.removeDuplicates()) { id in
             isCurrent = id == track.id
         }
@@ -220,6 +221,7 @@ struct AlbumGridCell: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(AccessibilityText.album(album)))
         .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier(AccessibilityID.Item.album(album.id))
     }
 }
 
@@ -243,6 +245,7 @@ struct AlbumListRow: View {
         .frame(minHeight: 44)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(AccessibilityText.album(album)))
+        .accessibilityIdentifier(AccessibilityID.Item.album(album.id))
     }
 
     private var detail: String {
@@ -267,6 +270,7 @@ struct ArtistListRow: View {
         .frame(minHeight: 44)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(artist.name))
+        .accessibilityIdentifier(AccessibilityID.Item.artist(artist.id))
     }
 }
 
@@ -290,6 +294,7 @@ struct PlaylistListRow: View {
         .frame(minHeight: 44)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(AccessibilityText.playlist(playlist)))
+        .accessibilityIdentifier(AccessibilityID.Item.playlist(playlist.id))
     }
 }
 
@@ -342,12 +347,14 @@ struct PlayShuffleBar<Accessory: View>: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(!isEnabled)
+        .accessibilityIdentifier(AccessibilityID.Collection.play)
         Button(action: shuffle) {
             Label("Shuffle", systemImage: "shuffle")
                 .frame(maxWidth: .infinity, minHeight: 28)
         }
         .buttonStyle(.bordered)
         .disabled(!isEnabled)
+        .accessibilityIdentifier(AccessibilityID.Collection.shuffle)
     }
 }
 

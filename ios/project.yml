@@ -39,6 +39,9 @@ packages:
     path: Packages/JellyfinBackend
   SonicClient:
     path: Packages/SonicClient
+  # The built-in sample library behind demo mode (Support/Demo).
+  JellyfinDemo:
+    path: Packages/JellyfinDemo
 
 targets:
   Jellyamp:
@@ -50,6 +53,7 @@ targets:
       - package: JellyampCore
       - package: JellyfinBackend
       - package: SonicClient
+      - package: JellyfinDemo
     info:
       path: Jellyamp/Info.plist
       properties:
@@ -152,6 +156,30 @@ targets:
         GENERATE_INFOPLIST_FILE: "YES"
         ENABLE_USER_SCRIPT_SANDBOXING: true
 
+  # UI tests and App Store screenshots. They drive the app in demo mode
+  # (-JellyampDemo YES), so they need no server. See docs/TESTING.md.
+  JellyampUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - JellyampUITests
+      # The identifiers the tests look for, shared with the app target: a
+      # UI-test bundle runs in its own process and cannot import the app.
+      - path: Jellyamp/Support/AccessibilityID.swift
+        group: JellyampUITests/Shared
+    dependencies:
+      - target: Jellyamp
+    settings:
+      groups:
+        - version
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.djtobi.jellyamp.uitests
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: "YES"
+        ENABLE_USER_SCRIPT_SANDBOXING: true
+        TEST_TARGET_NAME: Jellyamp
+        TARGETED_DEVICE_FAMILY: "1,2"
+
 schemes:
   Jellyamp:
     build:
@@ -170,3 +198,18 @@ schemes:
       config: Debug
     archive:
       config: Release
+
+  # Separate from the Jellyamp scheme on purpose: UI tests are slow and can
+  # flake on a loaded CI simulator, and must not block the unit-test gate.
+  # Also the scheme `fastlane screenshots` runs.
+  JellyampUITests:
+    build:
+      targets:
+        Jellyamp: all
+        JellyampUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - JellyampUITests

@@ -79,6 +79,16 @@ if [ -f "$app/PrivacyInfo.xcprivacy" ] && ! plutil -lint "$app/PrivacyInfo.xcpri
     fail "PrivacyInfo.xcprivacy is not a valid property list"
 fi
 
+# The demo library's audio loops ship as a SwiftPM resource bundle
+# (ios/Packages/JellyfinDemo). Without them "Try the Demo" — what App Review
+# uses — plays nothing.
+loops="$(find "$app" -name '*.aac' -path '*Loops*' | wc -l | tr -d ' ')"
+if [ "$loops" -ge 24 ]; then
+    echo "ok: $loops demo audio loops are in the bundle"
+else
+    fail "only $loops of 24 demo audio loops are in the app bundle (JellyfinDemo resources)"
+fi
+
 if [ "$failures" -gt 0 ]; then
     echo "$failures problem(s) in $archive" >&2
     exit 1

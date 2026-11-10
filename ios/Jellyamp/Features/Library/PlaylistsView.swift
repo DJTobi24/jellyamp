@@ -55,6 +55,7 @@ struct PlaylistsView: View {
                     Image(systemName: "plus")
                 }
                 .accessibilityLabel(Text("New Playlist"))
+                .accessibilityIdentifier(AccessibilityID.Library.newPlaylist)
             }
         }
         .alert("New Playlist", isPresented: $showNew) {

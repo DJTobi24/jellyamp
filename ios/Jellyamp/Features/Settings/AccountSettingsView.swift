@@ -34,6 +34,7 @@ struct AccountSettingsView: View {
                 Button("Sign Out", role: .destructive) {
                     isConfirmingSignOut = true
                 }
+                .accessibilityIdentifier(AccessibilityID.Settings.signOut)
             } footer: {
                 Text("Signing out removes downloaded music and cached library data from this device. Your library on the server is not affected.")
             }

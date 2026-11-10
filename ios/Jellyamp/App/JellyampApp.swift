@@ -7,6 +7,12 @@ struct JellyampApp: App {
     // outside this view tree (see `DependencyContainer.shared`).
     @StateObject private var container = DependencyContainer.shared
 
+    init() {
+        // Launch arguments of UI tests (animations off, clean slate) apply
+        // before the first view exists.
+        LaunchOptions.applyAtLaunch()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
