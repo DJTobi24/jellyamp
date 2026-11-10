@@ -71,6 +71,46 @@
         }
       }
     },
+    "%lld characters left" : {
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Noch %lld Zeichen"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Noch %lld Zeichen"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld character left"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld characters left"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld hours" : {
       "localizations" : {
         "de" : {
@@ -661,6 +701,66 @@
         }
       }
     },
+    "%lld tracks · %lld min · “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@tracks@ · %2$lld Min. · „%3$@“"
+          },
+          "substitutions" : {
+            "tracks" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Titel"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Titel"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@tracks@ · %2$lld min · “%3$@”"
+          },
+          "substitutions" : {
+            "tracks" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg track"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg tracks"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld up next" : {
       "localizations" : {
         "de" : {
@@ -757,6 +857,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "90 Minuten"
+          }
+        }
+      }
+    },
+    "90s rock for a road trip" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "90er-Rock für einen Roadtrip"
           }
         }
       }
@@ -1111,6 +1221,16 @@
         }
       }
     },
+    "Analysis Engine" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Analyse-Engine"
+          }
+        }
+      }
+    },
     "Analysis runs in the background on the server. Sonic features only cover analyzed tracks; pull down to update." : {
       "localizations" : {
         "de" : {
@@ -1147,6 +1267,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "API-Schlüssel (gesichert – zum Ersetzen neu eingeben)"
+          }
+        }
+      }
+    },
+    "API Key Rejected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel abgelehnt"
           }
         }
       }
@@ -1301,12 +1431,42 @@
         }
       }
     },
+    "Built-in DSP" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integriertes DSP"
+          }
+        }
+      }
+    },
+    "Calm electronic music for focus" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruhige elektronische Musik zum Konzentrieren"
+          }
+        }
+      }
+    },
     "Can't reach a server at this address. Check the spelling and port, and that this device is on the same network or VPN as the server." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unter dieser Adresse ist kein Server erreichbar. Prüfe Schreibweise und Port und ob dieses Gerät im selben Netzwerk oder VPN wie der Server ist."
+          }
+        }
+      }
+    },
+    "Can't Reach the Sonic Server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonic-Server nicht erreichbar"
           }
         }
       }
@@ -1421,6 +1581,16 @@
         }
       }
     },
+    "Classical pieces that build slowly" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klassische Stücke, die sich langsam aufbauen"
+          }
+        }
+      }
+    },
     "Clear" : {
       "localizations" : {
         "de" : {
@@ -1431,12 +1601,32 @@
         }
       }
     },
+    "Clear all recent prompts?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle zuletzt verwendeten Anfragen löschen?"
+          }
+        }
+      }
+    },
     "Clear all upcoming tracks?" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle kommenden Titel entfernen?"
+          }
+        }
+      }
+    },
+    "Clear Recent Prompts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuletzt verwendete Anfragen löschen"
           }
         }
       }
@@ -1651,6 +1841,16 @@
         }
       }
     },
+    "Could Not Be Analyzed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht analysierbar"
+          }
+        }
+      }
+    },
     "Could not change the image" : {
       "localizations" : {
         "de" : {
@@ -1831,12 +2031,32 @@
         }
       }
     },
+    "Create Playlist" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist erstellen"
+          }
+        }
+      }
+    },
     "Created “%@”" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "„%@“ erstellt"
+          }
+        }
+      }
+    },
+    "Creates a new playlist from the same request" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellt aus derselben Anfrage eine neue Playlist"
           }
         }
       }
@@ -1947,6 +2167,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„%@“ gelöscht"
+          }
+        }
+      }
+    },
+    "Describe a mood or a moment and get a playlist from your library." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibe eine Stimmung oder einen Moment und erhalte eine Playlist aus deiner Bibliothek."
+          }
+        }
+      }
+    },
+    "Describe the music you want to hear" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibe die Musik, die du hören möchtest"
           }
         }
       }
@@ -2391,6 +2631,26 @@
         }
       }
     },
+    "Finding matching tracks in your library…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passende Titel werden in deiner Bibliothek gesucht …"
+          }
+        }
+      }
+    },
+    "Finished %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgeschlossen: %@"
+          }
+        }
+      }
+    },
     "Flat" : {
       "localizations" : {
         "de" : {
@@ -2417,6 +2677,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gefolgte Interpreten"
+          }
+        }
+      }
+    },
+    "Found %lld of %lld tracks. The others are no longer in your Jellyfin library." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld von %2$lld Titeln gefunden. Die übrigen sind nicht mehr in deiner Jellyfin-Bibliothek."
           }
         }
       }
@@ -2521,6 +2791,16 @@
         }
       }
     },
+    "Goes back to edit the request" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geht zurück, um die Anfrage zu bearbeiten"
+          }
+        }
+      }
+    },
     "Goes back to the previous song." : {
       "localizations" : {
         "de" : {
@@ -2587,6 +2867,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hochauflösend, verlustfrei"
+          }
+        }
+      }
+    },
+    "High-energy workout mix" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Energiegeladener Workout-Mix"
           }
         }
       }
@@ -3081,6 +3371,16 @@
         }
       }
     },
+    "Late-night ambient to fall asleep" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ambient für die späte Nacht zum Einschlafen"
+          }
+        }
+      }
+    },
     "Learn more at jellyfin.org" : {
       "localizations" : {
         "de" : {
@@ -3407,6 +3707,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemessene Lautstärke"
+          }
+        }
+      }
+    },
+    "Mellow acoustic for a quiet evening" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sanfte Akustikmusik für einen ruhigen Abend"
           }
         }
       }
@@ -3851,6 +4161,16 @@
         }
       }
     },
+    "Not run yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht gelaufen"
+          }
+        }
+      }
+    },
     "Not Signed In" : {
       "localizations" : {
         "de" : {
@@ -3901,6 +4221,16 @@
         }
       }
     },
+    "Nothing Matched" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Treffer"
+          }
+        }
+      }
+    },
     "Nothing matches “%@”." : {
       "localizations" : {
         "de" : {
@@ -3927,6 +4257,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Warteschlange ist leer. Die automatische Wiedergabe ergänzt ähnliche Titel, wenn sie eingeschaltet ist."
+          }
+        }
+      }
+    },
+    "Nothing to download here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier gibt es nichts zu laden"
           }
         }
       }
@@ -3967,6 +4307,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jetzt läuft: %1$@, %2$@"
+          }
+        }
+      }
+    },
+    "Number of Tracks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzahl der Titel"
           }
         }
       }
@@ -4067,6 +4417,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffne Jellyamp auf deinem iPhone und melde dich bei deinem Jellyfin-Server an."
+          }
+        }
+      }
+    },
+    "Opens a sample music library that needs no server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet eine Beispiel-Musikbibliothek, die keinen Server braucht"
           }
         }
       }
@@ -4371,12 +4731,32 @@
         }
       }
     },
+    "Playlist description" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibung der Playlist"
+          }
+        }
+      }
+    },
     "Playlists" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Playlists"
+          }
+        }
+      }
+    },
+    "Playlists from a text description, using the language model configured on the server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlists aus einer Textbeschreibung, erstellt mit dem auf dem Server eingerichteten Sprachmodell."
           }
         }
       }
@@ -4501,6 +4881,16 @@
         }
       }
     },
+    "Privacy: your jellyamp-server sends this text and a summary of your library (genre and artist names) to Anthropic, using the API key configured on that server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz: Dein jellyamp-server sendet diesen Text und eine Zusammenfassung deiner Bibliothek (Genre- und Interpretennamen) an Anthropic – mit dem API-Schlüssel, der auf diesem Server eingerichtet ist."
+          }
+        }
+      }
+    },
     "Queue" : {
       "localizations" : {
         "de" : {
@@ -4561,6 +4951,16 @@
         }
       }
     },
+    "Rainy Sunday morning jazz" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jazz für einen verregneten Sonntagmorgen"
+          }
+        }
+      }
+    },
     "Random" : {
       "localizations" : {
         "de" : {
@@ -4577,6 +4977,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zufällige Genre- und Jahrzehntsender von Jellyfin."
+          }
+        }
+      }
+    },
+    "Recent" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuletzt verwendet"
+          }
+        }
+      }
+    },
+    "Recent prompts are stored on this device only." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuletzt verwendete Anfragen werden nur auf diesem Gerät gespeichert."
           }
         }
       }
@@ -4607,6 +5027,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zuletzt gehört"
+          }
+        }
+      }
+    },
+    "Refine Request" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfrage anpassen"
           }
         }
       }
@@ -4741,6 +5171,16 @@
         }
       }
     },
+    "Request Not Accepted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfrage nicht angenommen"
+          }
+        }
+      }
+    },
     "Requesting a code…" : {
       "localizations" : {
         "de" : {
@@ -4811,6 +5251,16 @@
         }
       }
     },
+    "Retry Failed Tracks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehlgeschlagene Titel wiederholen"
+          }
+        }
+      }
+    },
     "Retrying soon. %@" : {
       "localizations" : {
         "de" : {
@@ -4847,6 +5297,156 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Route"
+          }
+        }
+      }
+    },
+    "Running" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft"
+          }
+        }
+      }
+    },
+    "Running, %lld tracks to go" : {
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Läuft, noch %lld Titel"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Läuft, noch %lld Titel"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Running, %lld track to go"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Running, %lld tracks to go"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Sage asks a language model and then searches your library. This usually takes 5 to 20 seconds; the bar is an estimate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sage fragt ein Sprachmodell und durchsucht dann deine Bibliothek. Das dauert meist 5 bis 20 Sekunden; der Balken ist eine Schätzung."
+          }
+        }
+      }
+    },
+    "Sage created a playlist, but its tracks could not be loaded from your Jellyfin server. Check your connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sage hat eine Playlist erstellt, aber ihre Titel konnten nicht von deinem Jellyfin-Server geladen werden. Prüfe deine Verbindung und versuche es erneut."
+          }
+        }
+      }
+    },
+    "Sage found %lld of the %lld tracks you asked for." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sage hat %1$lld der %2$lld gewünschten Titel gefunden."
+          }
+        }
+      }
+    },
+    "Sage found no analyzed tracks in your library that fit this request. Try a broader description, or a genre, mood or decade you know is in your library." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sage hat in deiner Bibliothek keine analysierten Titel gefunden, die zu dieser Anfrage passen. Versuche es mit einer allgemeineren Beschreibung oder mit einem Genre, einer Stimmung oder einem Jahrzehnt, das sicher in deiner Bibliothek vorkommt."
+          }
+        }
+      }
+    },
+    "Sage is thinking about your request…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sage denkt über deine Anfrage nach …"
+          }
+        }
+      }
+    },
+    "Sage picked %lld tracks, but none of them could be found on your Jellyfin server. The sonic server's analysis may be out of date; start a scan under Settings → Sonic Server." : {
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Sage hat %lld Titel ausgewählt, aber er wurde auf deinem Jellyfin-Server nicht gefunden. Die Analyse des Sonic-Servers ist möglicherweise veraltet; starte einen Scan unter „Einstellungen“ → „Sonic-Server“."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Sage hat %lld Titel ausgewählt, aber keiner davon wurde auf deinem Jellyfin-Server gefunden. Die Analyse des Sonic-Servers ist möglicherweise veraltet; starte einen Scan unter „Einstellungen“ → „Sonic-Server“."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Sage picked %lld track, but it could not be found on your Jellyfin server. The sonic server's analysis may be out of date; start a scan under Settings → Sonic Server."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Sage picked %lld tracks, but none of them could be found on your Jellyfin server. The sonic server's analysis may be out of date; start a scan under Settings → Sonic Server."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Sage Took Too Long" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sage hat zu lange gebraucht"
           }
         }
       }
@@ -4897,6 +5497,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„%@“ wurde in deinen Playlists gesichert."
+          }
+        }
+      }
+    },
+    "Scan" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan"
+          }
+        }
+      }
+    },
+    "Scan Now" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt scannen"
           }
         }
       }
@@ -5051,6 +5671,16 @@
         }
       }
     },
+    "Sending your request…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Anfrage wird gesendet …"
+          }
+        }
+      }
+    },
     "Server" : {
       "localizations" : {
         "de" : {
@@ -5077,6 +5707,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Serveradresse"
+          }
+        }
+      }
+    },
+    "Server Error" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serverfehler"
+          }
+        }
+      }
+    },
+    "Server message: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meldung des Servers: %@"
           }
         }
       }
@@ -5611,6 +6261,46 @@
         }
       }
     },
+    "Sonic Sage" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonic Sage"
+          }
+        }
+      }
+    },
+    "Sonic Sage Isn't Ready" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonic Sage ist nicht bereit"
+          }
+        }
+      }
+    },
+    "Sonic Sage needs the optional jellyamp-server with an Anthropic API key configured on it. Set it up under Settings → Sonic Server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonic Sage benötigt den optionalen jellyamp-server mit einem dort eingerichteten Anthropic-API-Schlüssel. Richte ihn unter „Einstellungen“ → „Sonic-Server“ ein."
+          }
+        }
+      }
+    },
+    "Sonic Sage Unavailable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonic Sage nicht verfügbar"
+          }
+        }
+      }
+    },
     "Sonic Server" : {
       "localizations" : {
         "de" : {
@@ -5797,6 +6487,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sender"
+          }
+        }
+      }
+    },
+    "Still working — this is taking longer than usual…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch in Arbeit – das dauert länger als üblich …"
           }
         }
       }
@@ -6011,12 +6711,92 @@
         }
       }
     },
+    "The demo library could not be started. Please try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Demo-Bibliothek konnte nicht gestartet werden. Bitte versuche es erneut."
+          }
+        }
+      }
+    },
+    "The description is %lld characters too long (limit: %lld)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Beschreibung ist %#@excess@ zu lang (Limit: %2$lld)."
+          },
+          "substitutions" : {
+            "excess" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Zeichen"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Zeichen"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The description is %#@excess@ too long (limit: %2$lld)."
+          },
+          "substitutions" : {
+            "excess" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg character"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg characters"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "The file could not be saved." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Datei konnte nicht gesichert werden."
+          }
+        }
+      }
+    },
+    "The Language Model Failed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler beim Sprachmodell"
           }
         }
       }
@@ -6091,6 +6871,26 @@
         }
       }
     },
+    "The request could not be sent. Check your connection and that jellyamp-server is running, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anfrage konnte nicht gesendet werden. Prüfe deine Verbindung und ob jellyamp-server läuft, und versuche es dann erneut."
+          }
+        }
+      }
+    },
+    "The scan could not be started. Check that the server is running and reachable." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Scan konnte nicht gestartet werden. Prüfe, ob der Server läuft und erreichbar ist."
+          }
+        }
+      }
+    },
     "The secure connection to this server failed. Its certificate may be self-signed or expired. If the server only speaks HTTP, start the address with http://" : {
       "localizations" : {
         "de" : {
@@ -6141,6 +6941,26 @@
         }
       }
     },
+    "The server did not accept this request. Shorten the description or choose a different number of tracks." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat diese Anfrage nicht angenommen. Kürze die Beschreibung oder wähle eine andere Anzahl von Titeln."
+          }
+        }
+      }
+    },
+    "The server is analyzing your library. Sonic features only cover analyzed tracks; pull down to update." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server analysiert gerade deine Bibliothek. Die Sonic-Funktionen berücksichtigen nur analysierte Titel; zum Aktualisieren nach unten ziehen."
+          }
+        }
+      }
+    },
     "The server is busy." : {
       "localizations" : {
         "de" : {
@@ -6157,6 +6977,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Server hat gerade Probleme (Fehler %lld). Versuche es gleich noch einmal."
+          }
+        }
+      }
+    },
+    "The server is reachable but has not finished its first library analysis. Jellyfin fallback is active until then." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server ist erreichbar, hat die erste Analyse der Bibliothek aber noch nicht abgeschlossen. Bis dahin ist der Jellyfin-Fallback aktiv."
           }
         }
       }
@@ -6261,6 +7091,26 @@
         }
       }
     },
+    "The sonic provider in use does not offer Sage. It needs jellyamp-server 1.1 or later with an Anthropic API key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der verwendete Sonic-Anbieter bietet Sage nicht an. Dafür wird jellyamp-server 1.1 oder neuer mit einem Anthropic-API-Schlüssel benötigt."
+          }
+        }
+      }
+    },
+    "The sonic server answered in a format this version of Jellyamp does not understand. Updating the server or the app may help." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Sonic-Server hat in einem Format geantwortet, das diese Version von Jellyamp nicht versteht. Ein Update des Servers oder der App kann helfen."
+          }
+        }
+      }
+    },
     "The sonic server rejected the API key. Check Settings → Sonic Server." : {
       "localizations" : {
         "de" : {
@@ -6327,6 +7177,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Build enthält keinen Last.fm-API-Schlüssel."
+          }
+        }
+      }
+    },
+    "This connection is not encrypted. Over the internet, others on the network could read your password. If your server offers it, use its https:// address instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Verbindung ist nicht verschlüsselt. Über das Internet könnten andere im Netzwerk dein Passwort mitlesen. Verwende stattdessen die https://-Adresse deines Servers, falls er eine anbietet."
           }
         }
       }
@@ -6511,12 +7371,32 @@
         }
       }
     },
+    "Tracks Could Not Be Loaded" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel konnten nicht geladen werden"
+          }
+        }
+      }
+    },
     "Tracks in Between" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Titel dazwischen"
+          }
+        }
+      }
+    },
+    "Tracks No Longer in Your Library" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel nicht mehr in deiner Bibliothek"
           }
         }
       }
@@ -6591,6 +7471,16 @@
         }
       }
     },
+    "Try the Demo" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demo ausprobieren"
+          }
+        }
+      }
+    },
     "Turn off" : {
       "localizations" : {
         "de" : {
@@ -6607,6 +7497,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schaltet den Sleep-Timer aus."
+          }
+        }
+      }
+    },
+    "Unexpected Answer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unerwartete Antwort"
           }
         }
       }
@@ -6671,6 +7571,16 @@
         }
       }
     },
+    "Upbeat songs to cook dinner to" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fröhliche Songs zum Kochen"
+          }
+        }
+      }
+    },
     "Use the ⋯ menu on a track, album or playlist to download it for offline listening." : {
       "localizations" : {
         "de" : {
@@ -6707,6 +7617,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Benutzername"
+          }
+        }
+      }
+    },
+    "Uses this example as your request" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendet dieses Beispiel als Anfrage"
+          }
+        }
+      }
+    },
+    "Uses this recent request" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendet diese frühere Anfrage"
           }
         }
       }
@@ -6871,12 +7801,12 @@
         }
       }
     },
-    "When the queue runs out, keep playing similar music." : {
+    "When the queue runs out, keep playing similar music. Stations from Home always keep going, whatever this is set to." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Spielt ähnliche Musik weiter, wenn die Warteschlange zu Ende ist."
+            "value" : "Spielt ähnliche Musik weiter, wenn die Warteschlange zu Ende ist. Sender von der Startseite laufen immer weiter, unabhängig von dieser Einstellung."
           }
         }
       }
@@ -7001,6 +7931,46 @@
         }
       }
     },
+    "Your jellyamp-server cannot run Sage right now: either no Anthropic API key is configured on it, or it has not analyzed any tracks yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein jellyamp-server kann Sage gerade nicht ausführen: Entweder ist dort kein Anthropic-API-Schlüssel eingerichtet, oder er hat noch keine Titel analysiert."
+          }
+        }
+      }
+    },
+    "Your jellyamp-server could not get an answer from Anthropic. This is usually temporary; try again in a moment. If it keeps happening, check the API key and model configured on the server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein jellyamp-server hat von Anthropic keine Antwort erhalten. Das ist meist vorübergehend; versuche es gleich noch einmal. Wenn es weiter auftritt, prüfe den API-Schlüssel und das Modell, die auf dem Server eingerichtet sind."
+          }
+        }
+      }
+    },
+    "Your jellyamp-server did not answer in time. The language model may be busy; try again in a moment." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein jellyamp-server hat nicht rechtzeitig geantwortet. Das Sprachmodell ist möglicherweise ausgelastet; versuche es gleich noch einmal."
+          }
+        }
+      }
+    },
+    "Your jellyamp-server reported an error (HTTP %lld). Check its log and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein jellyamp-server hat einen Fehler gemeldet (HTTP %lld). Prüfe sein Log und versuche es erneut."
+          }
+        }
+      }
+    },
     "Your Jellyfin music library, everywhere." : {
       "localizations" : {
         "de" : {
@@ -7011,12 +7981,12 @@
         }
       }
     },
-    "Your Jellyfin server no longer accepts this device's sign-in. Please sign in again." : {
+    "Your Jellyfin server no longer accepts this device's sign-in. Please sign in again. Your downloads and settings are still here." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dein Jellyfin-Server akzeptiert die Anmeldung dieses Geräts nicht mehr. Bitte melde dich erneut an."
+            "value" : "Dein Jellyfin-Server akzeptiert die Anmeldung dieses Geräts nicht mehr. Bitte melde dich erneut an. Deine Downloads und Einstellungen sind noch da."
           }
         }
       }
@@ -7041,6 +8011,16 @@
         }
       }
     },
+    "Your Request" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Anfrage"
+          }
+        }
+      }
+    },
     "Your session has expired. Sign in again." : {
       "localizations" : {
         "de" : {
@@ -7061,12 +8041,12 @@
         }
       }
     },
-    "Your whole library has been analyzed." : {
+    "Your whole library has been analyzed. New music is picked up by the server's regular scans, or right away with Scan Now." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deine gesamte Bibliothek wurde analysiert."
+            "value" : "Deine gesamte Bibliothek wurde analysiert. Neue Musik erfasst der Server bei seinen regelmäßigen Scans – oder sofort mit „Jetzt scannen“."
           }
         }
       }
