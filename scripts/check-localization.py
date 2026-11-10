@@ -237,6 +237,14 @@ INTERPOLATION_TYPES: dict[str, str] = {
     "progress.tracksTotal": INT,
     "progress.percent": INT,
     "syncState.skippedForStorage": INT,  # SmartSyncState.skippedForStorage = 0
+    "picked": INT,  # SageResult.Notice / SageFailure.nothingResolved(picked: Int)
+    "found": INT,
+    "requested": INT,
+    "excess": INT,  # SonicSageModel.excessCharacters: Int?
+    "remaining": INT,  # SagePrompt.remainingCharacters(for:) -> Int
+    "SagePrompt.maxLength": INT,
+    "Int(elapsed)": INT,
+    "scan.tracksPending": INT,  # SonicScanStatus.tracksPending: Int
     # String
     "DownloadFormatting.bytes(bytes)": TEXT,
     "DownloadFormatting.bytes(downloads.totalBytes)": TEXT,
@@ -248,6 +256,8 @@ INTERPOLATION_TYPES: dict[str, str] = {
     "artist": TEXT,  # PlaybackSummary.subtitle
     "connectedVersion": TEXT,
     "decade": TEXT,  # years are passed as text, see CoreLocalization.swift
+    "detail": TEXT,  # SageFailure.serverDetail
+    "prompt": TEXT,  # SonicSageResultView.prompt
     "errorMessage": TEXT,
     "letter": TEXT,
     "minimum": TEXT,  # JellyfinConnectionError.serverTooOld(version: String, minimum: String)
