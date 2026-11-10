@@ -173,8 +173,11 @@ targets:
       - JellyampUITests
       # The identifiers the tests look for, shared with the app target: a
       # UI-test bundle runs in its own process and cannot import the app.
+      # No `group:` override here — forcing the file into a second group
+      # makes one file reference a child of two PBXGroups, which Xcode's UI
+      # refuses to open ("member of more than one group"), even though
+      # xcodebuild tolerates it.
       - path: Jellyamp/Support/AccessibilityID.swift
-        group: JellyampUITests/Shared
     dependencies:
       - target: Jellyamp
     settings:
