@@ -13,16 +13,29 @@ Jellyfin server with a music library that your device can reach.
 
 ## What it does
 
-- Gapless playback and smooth crossfades
+- Smooth crossfades between tracks, while albums and live recordings play
+  through without fades
 - Equalizer and loudness leveling, so albums and mixes play at an even volume
-- Downloads for offline listening
+- Downloads for offline listening, with an offline mode and smart sync
+- Stations and instant mixes from any track, artist, genre or decade
 - Synced lyrics, when your server has them
-- Instant mixes and radio from any track
 - Lock screen, Control Center and AirPlay controls, a sleep timer, Siri and
   Shortcuts
+- Made for iPhone and iPad
 - Optional: scrobbling to Last.fm or ListenBrainz
 - Optional: a self-hosted companion server that adds sonic similarity
   features
+
+## Status
+
+Jellyamp 1.0 is finished but not yet available on the App Store or
+TestFlight. Until then it can be built from the
+[source code](https://github.com/DJTobi24/jellyamp#quick-start-for-developers).
+
+## What you need
+
+- An iPhone or iPad with iOS 16 or newer
+- A Jellyfin server, version 10.9 or newer, with a music library
 
 ## Privacy
 

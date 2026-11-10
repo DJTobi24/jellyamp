@@ -1,7 +1,9 @@
 # ADR-0003: GRDB (SQLite) for persistence
 
 ## Status
-Accepted
+Superseded by [ADR-0005](0005-json-files-instead-of-a-database.md). GRDB was
+never used and has been removed; the text below is kept as the record of the
+original plan.
 
 ## Context
 The app needs a local metadata cache synced in bulk from Jellyfin (tens of
