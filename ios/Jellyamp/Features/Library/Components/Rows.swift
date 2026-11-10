@@ -328,9 +328,18 @@ struct PlayShuffleBar<Accessory: View>: View {
                 HStack(spacing: 4) { accessory }
             }
         } else {
-            HStack(spacing: 8) {
-                buttons
-                accessory
+            // Longer translations ("Wiedergabe", "Zufällig") do not fit next
+            // to three accessory buttons on a phone: rather than wrapping the
+            // labels mid-word, the accessories then move below.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    buttons
+                    accessory
+                }
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) { buttons }
+                    HStack(spacing: 4) { accessory }
+                }
             }
         }
     }
@@ -339,6 +348,8 @@ struct PlayShuffleBar<Accessory: View>: View {
     private var buttons: some View {
         Button(action: play) {
             Label("Play", systemImage: "play.fill")
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 // Black on the white tint: 21:1 contrast.
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity, minHeight: 28)
@@ -348,6 +359,8 @@ struct PlayShuffleBar<Accessory: View>: View {
         .accessibilityIdentifier(AccessibilityID.Collection.play)
         Button(action: shuffle) {
             Label("Shuffle", systemImage: "shuffle")
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .frame(maxWidth: .infinity, minHeight: 28)
         }
         .buttonStyle(.bordered)

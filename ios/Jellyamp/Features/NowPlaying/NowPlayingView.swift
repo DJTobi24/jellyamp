@@ -450,6 +450,10 @@ struct BlurredArtBackground: View {
         Group {
             if let track, !reduceTransparency {
                 ArtworkView(itemID: track.albumID ?? track.id, imageTag: track.imageTag, size: 400)
+                    // Flatten image, clip shape and placeholder into one
+                    // layer first; blurred separately they left a hard-edged
+                    // square behind the lyrics.
+                    .compositingGroup()
                     .blur(radius: 60)
                     .opacity(0.6)
                     .scaleEffect(1.5)
