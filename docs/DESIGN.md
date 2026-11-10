@@ -18,7 +18,7 @@ language, while still deploying back to iOS 16:
 - **Custom surfaces** use the helpers in
   `ios/Jellyamp/DesignSystem/GlassStyle.swift`; every iOS 26 API call is
   gated behind `#available(iOS 26, *)` with an `.ultraThinMaterial` fallback:
-  - `glassPanel(cornerRadius:)` → `glassEffect(.regular.interactive(), in: .rect(...))` — mini player
+  - `glassPanel(cornerRadius:)` → `glassEffect(.regular.interactive(), in: .rect(...))` — mini player, onboarding panels
   - `glassCapsule()` → `glassEffect(.regular, in: .capsule)` — transport-control cluster on Now Playing
   - `glassButtonStyle()` → `.buttonStyle(.glass)`
   - `tabBarMinimizesOnScroll()` → `.tabBarMinimizeBehavior(.onScrollDown)` — tab bar shrinks while browsing
@@ -28,9 +28,33 @@ language, while still deploying back to iOS 16:
 
 CI builds on the `macos-26` runner so these APIs compile (`ios.yml`).
 
-## Future (Phase 4)
+## Layout and navigation
+
+- `AdaptiveShellView` picks the layout from the horizontal size class: a tab
+  bar (Home, Library, Search, Downloads, Settings) on compact width, a
+  sidebar on regular width. Both share `AppNavigator`, so selection and
+  navigation paths survive rotation and multitasking size changes.
+- The mini player is docked above the tab bar or at the bottom of the detail
+  column; Now Playing is a full-screen cover with its own wide layout.
+- The app is dark only (`preferredColorScheme(.dark)`).
+
+## Colour from artwork
+
+`DominantColor` (Core) extracts a vivid dominant colour from the cover;
+`ArtworkPalette` caches it per track. It tints the visualizer and Now
+Playing. Tiles without artwork (genres) get a stable hue from `StableColor`.
+
+## Motion and accessibility
+
+- Reduce Motion disables the mini-player drag animation, lyric scroll
+  animation and the visualizer; Low Power Mode also stops the visualizer.
+- Every icon-only button carries an accessibility label; track rows expose
+  their context-menu actions as accessibility actions.
+
+## Not built
 
 - `GlassEffectContainer` + `glassEffectID` for morphing the mini player into
-  the full Now Playing screen.
-- Art-reactive tinting: `glassEffect(.regular.tint(...))` from the dominant
-  artwork color, shared with the visualizer.
+  Now Playing.
+- Glass tinted from the artwork colour (`glassEffect(.regular.tint(...))`).
+- `glassButtonStyle()` exists in `GlassStyle.swift` but no view uses it yet.
+- A light appearance.
