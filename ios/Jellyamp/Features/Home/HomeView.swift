@@ -93,6 +93,9 @@ struct HomeView: View {
             if container.sonicCapabilities.supports(.adventure) {
                 adventureBanner
             }
+            if container.sonicCapabilities.supports(.sage) {
+                SonicSageHomeEntry(inset: metrics.inset)
+            }
             if hasStations {
                 HomeStationShelves(
                     stations: container.stations,
