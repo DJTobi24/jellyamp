@@ -39,5 +39,6 @@ struct LibraryRootList: View {
             Label(category.title, systemImage: category.systemImage)
                 .frame(minHeight: 32)
         }
+        .accessibilityIdentifier(AccessibilityID.Library.category(category.rawValue))
     }
 }

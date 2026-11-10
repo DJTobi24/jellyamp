@@ -256,9 +256,11 @@ private struct TrackActionButtons: View {
         Button {
             actions.playNext([track])
         } label: { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+        .accessibilityIdentifier(AccessibilityID.TrackMenu.playNext)
         Button {
             actions.enqueue([track])
         } label: { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+        .accessibilityIdentifier(AccessibilityID.TrackMenu.addToQueue)
         Button {
             actions.instantMix(from: track)
         } label: { Label("Instant Mix", systemImage: "wand.and.stars") }
@@ -273,9 +275,11 @@ private struct TrackActionButtons: View {
                 Label("Add to Liked Songs", systemImage: "heart")
             }
         }
+        .accessibilityIdentifier(AccessibilityID.TrackMenu.toggleFavorite)
         Button {
             actions.addToPlaylist([track], title: track.title)
         } label: { Label("Add to Playlist…", systemImage: "text.badge.plus") }
+        .accessibilityIdentifier(AccessibilityID.TrackMenu.addToPlaylist)
         if let albumID = track.albumID, albumID != context.albumID {
             Button {
                 actions.open(LibraryRoute.albumRoute(for: track))
@@ -568,12 +572,18 @@ struct FavoriteButton: View {
     let itemID: String
     private let serverValue: Bool
     private let compact: Bool
+    private let inNowPlaying: Bool
 
-    /// - Parameter compact: a smaller heart for use inside rows.
-    init(itemID: String, isFavorite: Bool, compact: Bool = false) {
+    /// - Parameters:
+    ///   - compact: a smaller heart for use inside rows.
+    ///   - inNowPlaying: gives the player's heart its own accessibility
+    ///     identifier, so UI tests can tell it from the one on the screen
+    ///     underneath.
+    init(itemID: String, isFavorite: Bool, compact: Bool = false, inNowPlaying: Bool = false) {
         self.itemID = itemID
         self.serverValue = isFavorite
         self.compact = compact
+        self.inNowPlaying = inNowPlaying
     }
 
     private var isFavorite: Bool {
@@ -595,5 +605,10 @@ struct FavoriteButton: View {
         .accessibilityLabel(Text("Favorite"))
         .accessibilityValue(isFavorite ? Text("On") : Text("Off"))
         .accessibilityAddTraits(isFavorite ? .isSelected : [])
+        .accessibilityIdentifier(
+            inNowPlaying
+                ? AccessibilityID.NowPlaying.favorite(isOn: isFavorite)
+                : AccessibilityID.Collection.favorite(isOn: isFavorite)
+        )
     }
 }

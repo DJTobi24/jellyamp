@@ -42,6 +42,7 @@ struct AddToPlaylistView: View {
                         Label("New Playlist", systemImage: "plus")
                             .frame(minHeight: 32)
                     }
+                    .accessibilityIdentifier(AccessibilityID.AddToPlaylist.newPlaylist)
                 } footer: {
                     Text(summary)
                 }
@@ -69,6 +70,7 @@ struct AddToPlaylistView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityHint(Text("Adds to this playlist"))
+                            .accessibilityIdentifier(AccessibilityID.AddToPlaylist.playlist(playlist.id))
                             .onAppear { loader.loadMoreIfNeeded(showing: playlist) }
                         }
                         PagingFooter(loader)
@@ -80,6 +82,7 @@ struct AddToPlaylistView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier(AccessibilityID.AddToPlaylist.cancel)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if working { ProgressView() }

@@ -66,6 +66,7 @@ struct PlayerControlsView: View {
             }
             .accessibilityLabel("Shuffle")
             .accessibilityValue(playerState.isShuffled ? "On" : "Off")
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.shuffle)
 
             Button {
                 Haptics.transport()
@@ -77,6 +78,7 @@ struct PlayerControlsView: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("Previous Track")
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.previous)
 
             Button {
                 Haptics.transport()
@@ -100,6 +102,7 @@ struct PlayerControlsView: View {
             }
             .accessibilityLabel(playerState.isPlaying || playerState.isLoading ? "Pause" : "Play")
             .accessibilityValue(playerState.isLoading ? "Loading" : "")
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.playPause(isPlaying: playerState.isPlaying || playerState.isLoading))
 
             Button {
                 Haptics.transport()
@@ -111,6 +114,7 @@ struct PlayerControlsView: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("Next Track")
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.next)
 
             Button {
                 Haptics.toggle()
@@ -124,6 +128,7 @@ struct PlayerControlsView: View {
             }
             .accessibilityLabel("Repeat")
             .accessibilityValue(repeatDescription)
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.repeatMode)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 12)
@@ -187,6 +192,7 @@ struct ScrubberView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Playback position")
             .accessibilityValue(accessibilityPosition)
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.scrubber)
             .accessibilityAdjustableAction { direction in
                 adjust(direction)
             }

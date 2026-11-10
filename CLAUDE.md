@@ -60,6 +60,7 @@ not yet published). Monorepo: `ios/` (SwiftUI app + local SPM packages),
 | Localization | `python3 scripts/check-localization.py` (Linux OK; part of `ios.yml`'s metadata job) |
 | Release config | `python3 scripts/check-appstore-metadata.py` (listing limits, icon, privacy manifest vs. APIs used, plist keys) |
 | App target | macOS only: `xcodegen generate` + xcodebuild (CI: `ios.yml` on pushes to `claude/**` and PRs to `main`; build, test, unsigned Release archive) |
+| App unit tests, UI tests, screenshots | macOS only, all in demo mode (no server): `docs/TESTING.md`. UI tests run in ios-ui-tests.yml — by hand, or put `[ui-tests]` in a commit message |
 
 Notes for sandboxed environments: Docker Hub blob pulls and swift.org may be
 blocked. The Google mirror usually works (start `dockerd` first if needed):
@@ -68,6 +69,16 @@ blocked. The Google mirror usually works (start `dockerd` first if needed):
 `make test-core SWIFT_IMAGE=mirror.gcr.io/library/swift:6.0`). Reach a local
 Jellyfin with `curl --noproxy '*'`. The server's SQLite file needs no care: a
 database from another schema version is reset on startup.
+
+## Demo mode and UI tests
+
+- `ios/Packages/JellyfinDemo` is a Jellyfin stand-in (fictional library,
+  generated covers and audio, loopback HTTP server). The app signs in to it
+  with "Try the Demo" or `-JellyampDemo YES`; UI tests and screenshots run
+  against it. An API call a screen starts making must be answered by
+  `DemoBackend` too — its tests run the real API clients against it.
+- UI tests find elements by `AccessibilityID` (shared file
+  `ios/Jellyamp/Support/AccessibilityID.swift`), never by label text.
 
 ## Gotchas already hit
 
@@ -121,3 +132,7 @@ new quirk turns up):
   token — device IDs must be unique per install (and per test).
 - `NormalizationGain` is only filled after the *Audio Normalization* task
   ran with LUFS scan enabled; a plain library scan measures nothing.
+- `StreamingAudioSource` only schedules packets that arrive with packet
+  descriptions (`handlePackets`), as MP3 and AAC do. Constant-bitrate PCM
+  (WAV, AIFF) is parsed and then dropped, so such a file never starts —
+  which is why the demo audio is AAC, not generated WAV.

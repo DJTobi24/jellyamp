@@ -13,6 +13,7 @@ struct SettingsView: View {
                     } label: {
                         Label("Playback", systemImage: "waveform")
                     }
+                    .accessibilityIdentifier(AccessibilityID.Settings.playback)
                 }
 
                 Section {
@@ -21,6 +22,7 @@ struct SettingsView: View {
                     } label: {
                         Label("Downloads & Offline", systemImage: "arrow.down.circle")
                     }
+                    .accessibilityIdentifier(AccessibilityID.Settings.downloads)
                 }
 
                 Section {
@@ -29,11 +31,13 @@ struct SettingsView: View {
                     } label: {
                         LabeledContent("Sonic Server", value: container.isSonicServerActive ? String(localized: "Connected") : String(localized: "Jellyfin fallback"))
                     }
+                    .accessibilityIdentifier(AccessibilityID.Settings.sonic)
                     NavigationLink {
                         ScrobblingSettingsView()
                     } label: {
                         Label("Scrobbling", systemImage: "dot.radiowaves.left.and.right")
                     }
+                    .accessibilityIdentifier(AccessibilityID.Settings.scrobbling)
                 } header: {
                     Text("Services")
                 }
@@ -44,6 +48,7 @@ struct SettingsView: View {
                     } label: {
                         AccountSettingsRow()
                     }
+                    .accessibilityIdentifier(AccessibilityID.Settings.account)
                 }
 
                 Section {
@@ -52,6 +57,7 @@ struct SettingsView: View {
                     } label: {
                         Label("About", systemImage: "info.circle")
                     }
+                    .accessibilityIdentifier(AccessibilityID.Settings.about)
                 }
             }
             .navigationTitle("Settings")

@@ -14,6 +14,9 @@ struct JellyampApp: App {
         // strings before anything is drawn or spoken. `init` runs for every
         // launch, including background launches for Siri and CarPlay.
         CoreStrings.current = .localized
+        // Launch arguments of UI tests (animations off, clean slate) apply
+        // before the first view exists.
+        LaunchOptions.applyAtLaunch()
     }
 
     var body: some Scene {

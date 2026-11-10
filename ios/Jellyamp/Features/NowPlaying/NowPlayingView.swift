@@ -132,6 +132,7 @@ struct NowPlayingView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Album artwork")
             .accessibilityValue(visualizerDescription)
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.artwork)
             .accessibilityHint("Changes the visualizer")
         } else {
             RoundedRectangle(cornerRadius: 8)
@@ -196,10 +197,11 @@ struct NowPlayingView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
+                .accessibilityIdentifier(AccessibilityID.NowPlaying.trackInfo)
 
                 // The shared heart: reads and writes through
                 // `FavoritesModel`, like every other heart in the app.
-                FavoriteButton(itemID: track.id, isFavorite: track.isFavorite)
+                FavoriteButton(itemID: track.id, isFavorite: track.isFavorite, inNowPlaying: true)
 
                 trackMenu(track)
             }
@@ -235,6 +237,7 @@ struct NowPlayingView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("More")
+        .accessibilityIdentifier(AccessibilityID.NowPlaying.more)
     }
 
     @ViewBuilder
@@ -282,6 +285,7 @@ struct NowPlayingView: View {
             .buttonStyle(.plain)
             .disabled(playerState.currentTrack == nil)
             .accessibilityLabel("Lyrics")
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.lyrics)
             Button {
                 cycleVisualizer()
             } label: {
@@ -294,6 +298,7 @@ struct NowPlayingView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Visualizer")
             .accessibilityValue(visualizerDescription)
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.visualizer)
             Button {
                 showQueue = true
             } label: {
@@ -306,12 +311,14 @@ struct NowPlayingView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Queue")
             .accessibilityValue("\(playerState.upNext.count) up next")
+            .accessibilityIdentifier(AccessibilityID.NowPlaying.queue)
         }
     }
 
     private var header: some View {
         HStack {
             headerButton(systemName: "chevron.down", label: "Close Player") { dismiss() }
+                .accessibilityIdentifier(AccessibilityID.NowPlaying.close)
             Spacer()
             if let album = playerState.currentTrack?.albumName {
                 Text(album)

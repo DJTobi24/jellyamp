@@ -1,7 +1,9 @@
 Jellyamp is a music player for Jellyfin, a free, self-hosted media server. The app has no content of its own: users sign in to a Jellyfin server they run themselves and play the music stored there.
 
 DEMO ACCESS (no server of your own needed)
-The Jellyfin project runs a public demo server. On the first screen enter:
+Easiest: tap "Try the Demo" at the bottom of the first screen. The app opens a built-in sample library (made-up artists, generated artwork and audio) in which everything below can be tried, including downloads, without any server or account. Settings > Account > Sign Out returns to the first screen.
+
+To see the app against a real server: the Jellyfin project runs a public demo server. On the first screen enter:
   Server:   https://demo.jellyfin.org/stable
   User:     demo
   Password: (leave empty)
@@ -25,7 +27,7 @@ iOS shows the local network permission prompt when a user enters a server on the
 
 OPTIONAL FEATURES THAT NEED EXTERNAL ACCOUNTS
 - Scrobbling (Settings) sends played tracks to the user's own Last.fm or ListenBrainz account. Off by default.
-- "Sonic" features need a second self-hosted server (jellyamp-server). Without it the app falls back to Jellyfin's built-in Instant Mix, as it does on the demo server.
+- "Sonic" features need a second self-hosted server (jellyamp-server). Without it the app falls back to Jellyfin's built-in Instant Mix, as it does on the public demo server. The built-in demo simulates such a server so that these features (Mixes for You, Sonic Adventure) can be seen.
 
 OTHER
 - No account creation, no purchases, no subscriptions, no advertising.

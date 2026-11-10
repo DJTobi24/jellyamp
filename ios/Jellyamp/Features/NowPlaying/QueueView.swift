@@ -41,6 +41,7 @@ struct QueueView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
+                        .accessibilityIdentifier(AccessibilityID.Queue.done)
                 }
             }
             .confirmationDialog("Clear all upcoming tracks?", isPresented: $confirmClear, titleVisibility: .visible) {
@@ -99,6 +100,7 @@ struct QueueView: View {
                         QueueRow(track: track, isCurrent: false)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier(AccessibilityID.Queue.upNext(index))
                 }
                 .onDelete { offsets in
                     // Highest index first so earlier removals do not shift later ones.

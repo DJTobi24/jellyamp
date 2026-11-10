@@ -89,17 +89,22 @@ private struct SidebarShell: View {
             List(selection: navigator.sidebarBinding) {
                 Section {
                     sidebarRow("Home", systemImage: "house", item: .section(.home))
+                        .accessibilityIdentifier(AccessibilityID.Sidebar.home)
                     sidebarRow("Search", systemImage: "magnifyingglass", item: .section(.search))
+                        .accessibilityIdentifier(AccessibilityID.Sidebar.search)
                 }
                 Section("Library") {
                     ForEach(LibraryCategory.allCases) { category in
                         Label(category.title, systemImage: category.systemImage)
                             .tag(SidebarItem.category(category))
+                            .accessibilityIdentifier(AccessibilityID.Sidebar.category(category.rawValue))
                     }
                 }
                 Section {
                     sidebarRow("Downloads", systemImage: "arrow.down.circle", item: .section(.downloads))
+                        .accessibilityIdentifier(AccessibilityID.Sidebar.downloads)
                     sidebarRow("Settings", systemImage: "gearshape", item: .section(.settings))
+                        .accessibilityIdentifier(AccessibilityID.Sidebar.settings)
                 }
             }
             .listStyle(.sidebar)
