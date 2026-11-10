@@ -300,7 +300,7 @@ struct PlaylistDetailView: View {
         Task { @MainActor in
             do {
                 try await library.renamePlaylist(playlistID: playlist.id, name: trimmed)
-                LibraryChanges.shared.playlistsChanged()
+                LibraryChanges.shared.playlistsChanged(namesChanged: true)
             } catch {
                 name = previous
                 ToastCenter.shared.showError(String(localized: "Could not rename the playlist"), error: error)
@@ -313,7 +313,7 @@ struct PlaylistDetailView: View {
         Task { @MainActor in
             do {
                 try await library.deletePlaylist(playlistID: playlist.id)
-                LibraryChanges.shared.playlistsChanged()
+                LibraryChanges.shared.playlistsChanged(namesChanged: true)
                 dismiss()
             } catch {
                 ToastCenter.shared.showError(String(localized: "Could not delete the playlist"), error: error)

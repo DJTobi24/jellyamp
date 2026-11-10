@@ -171,8 +171,14 @@ final class LibraryChanges: ObservableObject {
     /// changed; the playlists list refreshes when it moves.
     @Published private(set) var playlistsRevision = 0
 
-    func playlistsChanged() {
+    /// - Parameter namesChanged: a playlist was created, renamed or deleted.
+    ///   Siri only recognises playlist names it was told about, so the
+    ///   system is asked to read the list again.
+    func playlistsChanged(namesChanged: Bool = false) {
         playlistsRevision += 1
+        if namesChanged {
+            SystemIntegration.shared.refreshShortcutParameters()
+        }
     }
 }
 

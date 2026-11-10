@@ -148,7 +148,7 @@ struct AddToPlaylistView: View {
                 let ids = tracks.map(\.id)
                 let playlistID = try await library.createPlaylist(name: name, itemIDs: Array(ids.prefix(Self.batchSize)))
                 try await append(Array(ids.dropFirst(Self.batchSize)), to: playlistID, library: library)
-                LibraryChanges.shared.playlistsChanged()
+                LibraryChanges.shared.playlistsChanged(namesChanged: true)
                 ToastCenter.shared.show(String(localized: "Created “\(name)”"), style: .success)
                 dismiss()
             } catch {
