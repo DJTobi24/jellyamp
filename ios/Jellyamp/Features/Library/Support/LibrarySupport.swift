@@ -20,6 +20,10 @@ extension DependencyContainer {
 /// Turns errors into one short sentence a user can act on.
 enum LibraryErrorText {
     static func message(for error: Error) -> String {
+        // Changes the offline library cannot make (favorites, playlists).
+        if let offlineMessage = OfflineErrorMessage.text(for: error) {
+            return offlineMessage
+        }
         if let error = error as? JellyfinError {
             switch error {
             case .unauthorized, .notAuthenticated:

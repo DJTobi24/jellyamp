@@ -23,7 +23,7 @@ struct MixDetailView: View {
             TrackListContent(
                 tracks: tracks,
                 isLoaded: isLoaded,
-                emptyMessage: "The tracks of this mix are no longer in your library."
+                emptyMessage: String(localized: "The tracks of this mix are no longer in your library.")
             )
             .listStyle(.plain)
             .overlay {

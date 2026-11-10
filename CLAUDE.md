@@ -17,6 +17,13 @@ local SPM packages), `server/` (optional FastAPI sonic-analysis companion),
   follow `SonicCapabilities`.
 - The Xcode project is generated (`cd ios && xcodegen generate`); never check
   in `*.xcodeproj`. App-target settings live in `ios/project.yml`.
+- **Every user-visible string is localized (English + German).** Write
+  SwiftUI literals or `String(localized:)`, then add the key with its German
+  text to `ios/Jellyamp/Resources/Localizable.xcstrings` by hand and run
+  `python3 scripts/check-localization.py` (CI fails on a missing key). The
+  packages carry no resources: text they compose goes through
+  `CoreStrings` / `CarPlayStrings`. Glossary and pitfalls:
+  `docs/LOCALIZATION.md`.
 - iOS 26 / Liquid Glass APIs are used only via the gated helpers in
   `ios/Jellyamp/DesignSystem/GlassStyle.swift` (deployment target stays
   iOS 16). The iOS CI job therefore needs the `macos-26` runner (iOS 26 SDK).
@@ -28,6 +35,7 @@ local SPM packages), `server/` (optional FastAPI sonic-analysis companion),
 |---|---|
 | Swift packages | `swift test` inside each package (Linux OK; CI: core-linux.yml uses the `swift:6.0` container) |
 | Jellyfin API layer, live | `scripts/dev-jellyfin/up.sh`, then in `ios/Packages/JellyfinBackend`: `JELLYFIN_TEST_URL=http://localhost:8096 JELLYFIN_TEST_USER=demo JELLYFIN_TEST_PASSWORD=demo swift test --filter JellyfinLiveTests` (skipped without the variables; in Docker add `--network host` and `-e`; CI: `jellyfin-live` in core-linux.yml). Findings: `docs/JELLYFIN-API-NOTES.md` |
+| Localization | `python3 scripts/check-localization.py` (Linux OK; part of ios.yml's metadata job) |
 | Server | `cd server && .venv/bin/pytest -q && .venv/bin/ruff check .` (setup: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`) |
 | App target | macOS only: `xcodegen generate` + xcodebuild (CI: ios.yml on PRs) |
 

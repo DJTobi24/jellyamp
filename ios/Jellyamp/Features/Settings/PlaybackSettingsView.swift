@@ -35,7 +35,7 @@ struct PlaybackSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 LabeledContent("Crossfade") {
                     Text(container.settings.crossfadeDuration > 0
-                         ? "\(Int(container.settings.crossfadeDuration)) s"
+                         ? String(localized: "\(Int(container.settings.crossfadeDuration)) s")
                          : String(localized: "Off"))
                         .monospacedDigit()
                 }
@@ -125,7 +125,7 @@ struct PlaybackSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 LabeledContent("Fade Out") {
                     Text(container.settings.sleepTimerFadeOut > 0
-                         ? "\(Int(container.settings.sleepTimerFadeOut)) s"
+                         ? String(localized: "\(Int(container.settings.sleepTimerFadeOut)) s")
                          : String(localized: "Off"))
                         .monospacedDigit()
                 }
@@ -171,7 +171,7 @@ struct PlaybackSettingsView: View {
             NavigationLink {
                 EqualizerView()
             } label: {
-                LabeledContent("Equalizer", value: EQPreset.builtIn(id: container.settings.activeEQPresetID)?.name ?? String(localized: "Off"))
+                LabeledContent("Equalizer", value: EQPreset.builtIn(id: container.settings.activeEQPresetID)?.localizedName ?? String(localized: "Off"))
             }
         }
     }

@@ -270,16 +270,16 @@ public struct ListenBrainzScrobbleTarget: ScrobbleTarget {
         } catch let error as ScrobbleError {
             switch error {
             case .unauthorized:
-                throw ScrobbleDeliveryError.reauthenticate(message: "ListenBrainz no longer accepts this token.")
+                throw ScrobbleDeliveryError.reauthenticate(message: CoreStrings.current.listenBrainzTokenRejected)
             case .rateLimited(let retryAfter):
-                throw ScrobbleDeliveryError.retryLater(after: retryAfter, message: "ListenBrainz is rate limiting requests.")
+                throw ScrobbleDeliveryError.retryLater(after: retryAfter, message: CoreStrings.current.listenBrainzRateLimited)
             case .rejected(_, let message):
                 throw ScrobbleDeliveryError.rejected(message: message)
             case .serverError(let status):
                 if status >= 500 {
-                    throw ScrobbleDeliveryError.retryLater(after: nil, message: "ListenBrainz is unavailable (HTTP \(status)).")
+                    throw ScrobbleDeliveryError.retryLater(after: nil, message: CoreStrings.current.listenBrainzUnavailable(status))
                 }
-                throw ScrobbleDeliveryError.rejected(message: "ListenBrainz refused the listen (HTTP \(status)).")
+                throw ScrobbleDeliveryError.rejected(message: CoreStrings.current.listenBrainzRefused(status))
             }
         } catch {
             throw ScrobbleDeliveryError.offline

@@ -88,7 +88,7 @@ public enum ScrobbleDeliveryError: Error, Equatable, Sendable {
 
     public var message: String {
         switch self {
-        case .offline: return "The service could not be reached."
+        case .offline: return CoreStrings.current.scrobbleServiceUnreachable
         case .retryLater(_, let message): return message
         case .reauthenticate(let message): return message
         case .rejected(let message): return message

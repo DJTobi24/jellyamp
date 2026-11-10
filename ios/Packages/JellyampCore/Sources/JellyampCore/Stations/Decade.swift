@@ -17,13 +17,13 @@ public struct Decade: Codable, Hashable, Identifiable, Comparable, Sendable {
     /// fallback parses the leading four digits.
     public var seed: String { "\(startYear)s" }
 
-    /// Display label: "1980s".
-    public var title: String { seed }
+    /// Display label: "1980s" (localized by the app shell, unlike `seed`).
+    public var title: String { CoreStrings.current.decadeTitle(startYear) }
 
     /// Two-digit form for tight tiles: "80s", "00s".
     public var shortTitle: String {
         let twoDigits = ((startYear % 100) + 100) % 100
-        return (twoDigits < 10 ? "0\(twoDigits)" : "\(twoDigits)") + "s"
+        return CoreStrings.current.decadeShortTitle(twoDigits < 10 ? "0\(twoDigits)" : "\(twoDigits)")
     }
 
     public static func < (lhs: Decade, rhs: Decade) -> Bool { lhs.startYear < rhs.startYear }

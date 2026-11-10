@@ -333,7 +333,7 @@ public struct LastFMScrobbleTarget: ScrobbleTarget {
         } catch let error as LastFMError {
             switch error.kind {
             case .invalidSession:
-                throw ScrobbleDeliveryError.reauthenticate(message: "Last.fm no longer accepts this session. Connect again.")
+                throw ScrobbleDeliveryError.reauthenticate(message: CoreStrings.current.lastFMSessionRejected)
             case .retryLater:
                 // 29 is the rate limit; back off longer than for a blip.
                 var delay: TimeInterval?
@@ -354,9 +354,9 @@ public struct LastFMScrobbleTarget: ScrobbleTarget {
     private static func describe(_ error: LastFMError) -> String {
         switch error {
         case .api(let code, let message): return "Last.fm: \(message) (error \(code))"
-        case .http(let status): return "Last.fm is unavailable (HTTP \(status))."
-        case .malformedResponse: return "Last.fm sent an unexpected response."
-        case .notAuthenticated: return "Not connected to Last.fm."
+        case .http(let status): return CoreStrings.current.lastFMUnavailable(status)
+        case .malformedResponse: return CoreStrings.current.lastFMUnexpectedResponse
+        case .notAuthenticated: return CoreStrings.current.lastFMNotConnected
         }
     }
 }

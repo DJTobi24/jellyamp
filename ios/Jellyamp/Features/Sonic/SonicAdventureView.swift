@@ -172,7 +172,7 @@ struct SonicAdventureView: View {
 
     private var playlistName: String {
         guard let start, let end else { return String(localized: "Sonic Adventure") }
-        return AdventurePath.defaultPlaylistName(start: start, end: end)
+        return String(localized: "Adventure: \(start.title) \u{2192} \(end.title)")
     }
 
     private func build() {
@@ -220,7 +220,7 @@ struct AdventureResultView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)
                 .padding(.vertical, 8)
-            TrackListContent(tracks: tracks, isLoaded: true, emptyMessage: "No tracks.")
+            TrackListContent(tracks: tracks, isLoaded: true, emptyMessage: String(localized: "No tracks."))
                 .listStyle(.plain)
         }
         .navigationTitle("Your Adventure")

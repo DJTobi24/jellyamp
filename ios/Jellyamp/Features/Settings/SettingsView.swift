@@ -27,7 +27,7 @@ struct SettingsView: View {
                     NavigationLink {
                         SonicSettingsView()
                     } label: {
-                        LabeledContent("Sonic Server", value: container.isSonicServerActive ? "Connected" : "Jellyfin fallback")
+                        LabeledContent("Sonic Server", value: container.isSonicServerActive ? String(localized: "Connected") : String(localized: "Jellyfin fallback"))
                     }
                     NavigationLink {
                         ScrobblingSettingsView()
@@ -81,7 +81,7 @@ struct EqualizerView: View {
                         apply(preset)
                     } label: {
                         HStack {
-                            Text(preset.name).foregroundStyle(.primary)
+                            Text(preset.localizedName).foregroundStyle(.primary)
                             Spacer()
                             if preset.id == selectedID {
                                 Image(systemName: "checkmark").foregroundStyle(.tint)

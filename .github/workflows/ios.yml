@@ -45,6 +45,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check App Store metadata and release configuration
         run: python3 scripts/check-appstore-metadata.py
+      - name: Check that every string has a German translation
+        run: python3 scripts/check-localization.py
       - name: Check fastlane syntax
         run: ruby -c ios/fastlane/Fastfile && ruby -c ios/fastlane/Appfile
 

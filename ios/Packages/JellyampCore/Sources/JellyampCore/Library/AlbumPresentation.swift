@@ -77,7 +77,7 @@ public enum AlbumPresentation {
         if let genre = genres.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
             parts.append(genre)
         }
-        if let trackCount, trackCount > 0 { parts.append(DurationText.plural(trackCount, "song")) }
+        if let trackCount, trackCount > 0 { parts.append(CoreStrings.current.songCount(trackCount)) }
         if let duration, duration >= 1 { parts.append(DurationText.approximate(duration)) }
         return parts.joined(separator: " · ")
     }
