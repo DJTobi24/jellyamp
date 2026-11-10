@@ -17,8 +17,6 @@ struct NowPlayingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showQueue = false
     @State private var showLyrics = false
-    @State private var albumDestination: Album?
-    @State private var artistDestination: Artist?
     @State private var visualizerTint: Color = .white
 
     var body: some View {
@@ -42,12 +40,6 @@ struct NowPlayingView: View {
                 LyricsView(playerState: playerState, track: track)
                     .environmentObject(container)
             }
-        }
-        .sheet(item: $albumDestination) { album in
-            destinationSheet { AlbumDetailView(album: album) }
-        }
-        .sheet(item: $artistDestination) { artist in
-            destinationSheet { ArtistDetailView(artist: artist) }
         }
         .task(id: playerState.currentTrack.map { "\($0.albumID ?? $0.id)|\($0.imageTag ?? "")" } ?? "") {
             await updateVisualizerTint()
@@ -205,18 +197,9 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
 
-                Button {
-                    toggleFavorite(track)
-                } label: {
-                    Image(systemName: track.isFavorite ? "heart.fill" : "heart")
-                        .font(.title2)
-                        .foregroundStyle(track.isFavorite ? Color.pink : Color.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Favorite")
-                .accessibilityValue(track.isFavorite ? "On" : "Off")
+                // The shared heart: reads and writes through
+                // `FavoritesModel`, like every other heart in the app.
+                FavoriteButton(itemID: track.id, isFavorite: track.isFavorite)
 
                 trackMenu(track)
             }
@@ -224,41 +207,24 @@ struct NowPlayingView: View {
         }
     }
 
-    /// Optimistic toggle: the engine mirrors the new state into the queue
-    /// (so the lock screen and every queued copy agree) and it is rolled
-    /// back if the server refuses.
-    private func toggleFavorite(_ track: Track) {
-        let target = !track.isFavorite
-        Haptics.toggle()
-        container.player?.setFavorite(trackID: track.id, isFavorite: target)
-        Task {
-            do {
-                try await container.library?.setFavorite(itemID: track.id, isFavorite: target)
-            } catch {
-                container.player?.setFavorite(trackID: track.id, isFavorite: !target)
-            }
-        }
-    }
-
+    /// "Go to Album / Artist" navigate in the app underneath: `AppNavigator`
+    /// pushes the page onto the Library stack and the cover closes itself to
+    /// reveal it (`libraryCoverPresentation`, applied where the cover is
+    /// presented). "Add to Playlist" opens the shared sheet above the cover.
     private func trackMenu(_ track: Track) -> some View {
         Menu {
-            if track.albumID != nil {
+            if let route = LibraryRoute.albumRoute(for: track) {
                 Button {
-                    Task { await openAlbum(of: track) }
+                    AppNavigator.shared.open(route)
                 } label: { Label("Go to Album", systemImage: "square.stack") }
             }
-            if track.artistID != nil {
+            if let route = LibraryRoute.artistRoute(for: track) {
                 Button {
-                    Task { await openArtist(of: track) }
+                    AppNavigator.shared.open(route)
                 } label: { Label("Go to Artist", systemImage: "music.mic") }
             }
             Button {
-                // The playlist sheet belongs to the root view, which cannot
-                // present while this cover is up — close first.
-                dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    container.pendingPlaylistTrack = track
-                }
+                AppNavigator.shared.playlistRequest = PlaylistAddRequest(track: track)
             } label: { Label("Add to Playlist…", systemImage: "text.badge.plus") }
         } label: {
             Image(systemName: "ellipsis")
@@ -269,44 +235,6 @@ struct NowPlayingView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("More")
-    }
-
-    private func openAlbum(of track: Track) async {
-        guard let albumID = track.albumID else { return }
-        // The full album (year, favorite state) when reachable; otherwise
-        // what the track knows is enough to open the page.
-        let fetched = try? await container.library?.album(id: albumID)
-        albumDestination = fetched ?? Album(
-            id: albumID,
-            title: track.albumName ?? "",
-            artistName: track.artistName,
-            artistID: track.artistID,
-            imageTag: track.imageTag
-        )
-    }
-
-    private func openArtist(of track: Track) async {
-        guard let artistID = track.artistID else { return }
-        let fetched = try? await container.library?.artist(id: artistID)
-        artistDestination = fetched ?? Artist(id: artistID, name: track.artistName)
-    }
-
-    /// Album / artist pages open as a sheet over the player, so playback
-    /// controls are one swipe away and the tab underneath is left alone.
-    private func destinationSheet<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        NavigationStack {
-            content()
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") {
-                            albumDestination = nil
-                            artistDestination = nil
-                        }
-                    }
-                }
-        }
-        .environmentObject(container)
-        .environmentObject(playerState)
     }
 
     @ViewBuilder
