@@ -57,6 +57,14 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.music
+        # Languages the app is translated into. The strings live in
+        # Resources/*.xcstrings (plus {en,de}.lproj/AppShortcuts.strings);
+        # XcodeGen derives the project's knownRegions from those files, this
+        # key states the same for the system and App Store Connect.
+        # See docs/LOCALIZATION.md.
+        CFBundleLocalizations:
+          - en
+          - de
         # Export compliance: the app only uses encryption that is part of the
         # OS (HTTPS via URLSession, Keychain). Declaring it here skips the
         # per-build question in App Store Connect. See docs/RELEASE.md.
@@ -131,7 +139,8 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         # Lets Xcode extract Text("…") / String(localized:) into
-        # Resources/Localizable.xcstrings on every build.
+        # Resources/Localizable.xcstrings on every build. On Linux the
+        # catalog is checked by scripts/check-localization.py instead.
         SWIFT_EMIT_LOC_STRINGS: "YES"
         LOCALIZATION_PREFERS_STRING_CATALOGS: "YES"
 

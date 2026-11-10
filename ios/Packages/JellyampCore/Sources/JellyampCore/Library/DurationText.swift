@@ -26,14 +26,15 @@ public enum DurationText {
     /// `1 hr 12 min`. Seconds are dropped once a minute is reached.
     public static func approximate(_ duration: TimeInterval) -> String {
         let total = wholeSeconds(duration)
-        if total < 60 { return "\(total) sec" }
+        let strings = CoreStrings.current
+        if total < 60 { return strings.approximateSeconds(total) }
         // Round to the nearest minute so 59:40 reads "1 hr", not "59 min".
         let totalMinutes = (total + 30) / 60
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
-        if hours == 0 { return "\(minutes) min" }
-        if minutes == 0 { return "\(hours) hr" }
-        return "\(hours) hr \(minutes) min"
+        if hours == 0 { return strings.approximateMinutes(minutes) }
+        if minutes == 0 { return strings.approximateHours(hours) }
+        return strings.approximateHoursAndMinutes(hours, minutes)
     }
 
     /// Spelled out for VoiceOver, which reads "3:05" as a time of day:
@@ -43,15 +44,12 @@ public enum DurationText {
         let hours = total / 3600
         let minutes = (total % 3600) / 60
         let seconds = total % 60
+        let strings = CoreStrings.current
         var parts: [String] = []
-        if hours > 0 { parts.append(plural(hours, "hour")) }
-        if minutes > 0 { parts.append(plural(minutes, "minute")) }
-        if seconds > 0 || parts.isEmpty { parts.append(plural(seconds, "second")) }
+        if hours > 0 { parts.append(strings.spokenHours(hours)) }
+        if minutes > 0 { parts.append(strings.spokenMinutes(minutes)) }
+        if seconds > 0 || parts.isEmpty { parts.append(strings.spokenSeconds(seconds)) }
         return parts.joined(separator: ", ")
-    }
-
-    static func plural(_ count: Int, _ unit: String) -> String {
-        count == 1 ? "1 \(unit)" : "\(count) \(unit)s"
     }
 
     private static func pad(_ value: Int) -> String {

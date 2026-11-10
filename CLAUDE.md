@@ -33,8 +33,13 @@ not yet published). Monorepo: `ios/` (SwiftUI app + local SPM packages),
   in `ios/Jellyamp/DesignSystem/GlassStyle.swift` (`docs/DESIGN.md`).
 - `AppSettings` decodes tolerantly: add a field as property default +
   `decodeIfPresent` line + test, so saved settings are never reset.
-- User-facing text is English, as `Text("…")` literals or
-  `String(localized: "…")`; every icon-only button gets an
+- **Every user-visible string is localized (English + German).** Write
+  SwiftUI literals or `String(localized:)`, then add the key with its German
+  text to `ios/Jellyamp/Resources/Localizable.xcstrings` by hand and run
+  `python3 scripts/check-localization.py` (CI fails on a missing key). The
+  packages carry no resources: text they compose goes through
+  `CoreStrings` / `CarPlayStrings`. Glossary and pitfalls:
+  `docs/LOCALIZATION.md`. Every icon-only button gets an
   `.accessibilityLabel`.
 - Do not touch the audio streaming/scheduling internals
   (`StreamingAudioSource`, `TrackSchedulerNode`, the crossfade state machine
@@ -52,6 +57,7 @@ not yet published). Monorepo: `ios/` (SwiftUI app + local SPM packages),
 | Audio engine control flow | `scripts/engine-sim/run.sh` — compiles the real `AudioEnginePlayer` against fake audio nodes in Docker, about a minute; proves state-machine behaviour, not sound. Not in CI |
 | Server | `cd server && .venv/bin/pytest -q && .venv/bin/ruff check .` (setup: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`). The DSP tests need `ffmpeg` on PATH and are skipped without it; the 13 `integration` tests need `JELLYFIN_URL` + `JELLYFIN_API_KEY` |
 | Sonic fixtures | `bash scripts/sync-fixtures.sh --check` |
+| Localization | `python3 scripts/check-localization.py` (Linux OK; part of `ios.yml`'s metadata job) |
 | Release config | `python3 scripts/check-appstore-metadata.py` (listing limits, icon, privacy manifest vs. APIs used, plist keys) |
 | App target | macOS only: `xcodegen generate` + xcodebuild (CI: `ios.yml` on pushes to `claude/**` and PRs to `main`; build, test, unsigned Release archive) |
 

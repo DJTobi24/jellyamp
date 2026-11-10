@@ -122,7 +122,7 @@ struct SonicSettingsView: View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
                 ProgressView(value: progress.fraction)
-                Text("\(progress.tracksAnalyzed) of \(progress.tracksTotal) tracks analyzed (\(progress.percent) %)")
+                Text("\(progress.tracksAnalyzed) of \(progress.tracksTotal) tracks analyzed (\(progress.percent.formatted(.percent)))")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

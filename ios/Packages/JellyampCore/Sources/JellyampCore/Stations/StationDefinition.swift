@@ -40,7 +40,10 @@ public struct StationDefinition: Codable, Hashable, Identifiable, Sendable {
         self.artworkImageTag = artworkImageTag
     }
 
-    public static let libraryRadio = StationDefinition(id: "station.library", seed: .library, title: "Library Radio")
+    /// Computed, so the title follows the strings the app shell installed.
+    public static var libraryRadio: StationDefinition {
+        StationDefinition(id: "station.library", seed: .library, title: CoreStrings.current.libraryRadio)
+    }
 
     public static func genre(_ name: String) -> StationDefinition {
         StationDefinition(id: "station.genre.\(name.lowercased())", seed: .genre(name: name), title: name)

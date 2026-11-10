@@ -22,6 +22,7 @@ exclude:
   - CARPLAY.md
   - DESIGN.md
   - JELLYFIN-API-NOTES.md
+  - LOCALIZATION.md
   - RELEASE.md
   - ROADMAP.md
   - SCROBBLING.md

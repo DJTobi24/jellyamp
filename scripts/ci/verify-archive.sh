@@ -75,6 +75,16 @@ for resource in Assets.car PrivacyInfo.xcprivacy; do
     fi
 done
 
+# German is compiled from the String Catalogs at build time; a catalog that
+# silently drops out of the target would ship an English-only app.
+for resource in de.lproj/Localizable.strings de.lproj/InfoPlist.strings de.lproj/AppShortcuts.strings; do
+    if [ -f "$app/$resource" ]; then
+        echo "ok: $resource is in the bundle"
+    else
+        fail "$resource is missing from the app bundle (German localization)"
+    fi
+done
+
 if [ -f "$app/PrivacyInfo.xcprivacy" ] && ! plutil -lint "$app/PrivacyInfo.xcprivacy" >/dev/null; then
     fail "PrivacyInfo.xcprivacy is not a valid property list"
 fi

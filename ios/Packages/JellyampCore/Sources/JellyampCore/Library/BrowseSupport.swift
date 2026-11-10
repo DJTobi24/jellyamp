@@ -62,7 +62,7 @@ public enum AccessibilityText {
         detail: String? = nil
     ) -> String {
         var parts: [String] = []
-        if let trackNumber { parts.append("Track \(trackNumber)") }
+        if let trackNumber { parts.append(CoreStrings.current.trackNumber(trackNumber)) }
         parts.append(track.title)
         if let detail {
             if !detail.isEmpty { parts.append(detail) }
@@ -83,7 +83,7 @@ public enum AccessibilityText {
 
     public static func playlist(_ playlist: Playlist) -> String {
         var parts = [playlist.name]
-        if let count = playlist.trackCount { parts.append(DurationText.plural(count, "song")) }
+        if let count = playlist.trackCount { parts.append(CoreStrings.current.songCount(count)) }
         return parts.joined(separator: ", ")
     }
 }

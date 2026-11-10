@@ -1,0 +1,52 @@
+/*
+  App Shortcut phrases and tile titles (Services/Intents/JellyampShortcuts.swift).
+  Keys are the English phrases from the code, with \(.applicationName) written
+  as ${applicationName} and a parameter \(\.$name) as ${name}. Every phrase
+  must keep ${applicationName}. Checked by scripts/check-localization.py.
+*/
+
+"Play ${target} in ${applicationName}" = "Play ${target} in ${applicationName}";
+"Play ${target} on ${applicationName}" = "Play ${target} on ${applicationName}";
+"Listen to ${target} in ${applicationName}" = "Listen to ${target} in ${applicationName}";
+"Play music in ${applicationName}" = "Play music in ${applicationName}";
+"Play something in ${applicationName}" = "Play something in ${applicationName}";
+"Shuffle my liked songs in ${applicationName}" = "Shuffle my liked songs in ${applicationName}";
+"Shuffle my favorites in ${applicationName}" = "Shuffle my favorites in ${applicationName}";
+"Play my liked songs in ${applicationName}" = "Play my liked songs in ${applicationName}";
+"Play my favorites in ${applicationName}" = "Play my favorites in ${applicationName}";
+"Play recently added in ${applicationName}" = "Play recently added in ${applicationName}";
+"Play my newest music in ${applicationName}" = "Play my newest music in ${applicationName}";
+"Play what's new in ${applicationName}" = "Play what's new in ${applicationName}";
+"Start ${seed} radio in ${applicationName}" = "Start ${seed} radio in ${applicationName}";
+"Start a station from ${seed} in ${applicationName}" = "Start a station from ${seed} in ${applicationName}";
+"Play ${seed} radio in ${applicationName}" = "Play ${seed} radio in ${applicationName}";
+"Start a station in ${applicationName}" = "Start a station in ${applicationName}";
+"Start a radio in ${applicationName}" = "Start a radio in ${applicationName}";
+"Resume ${applicationName}" = "Resume ${applicationName}";
+"Resume music in ${applicationName}" = "Resume music in ${applicationName}";
+"Continue playing in ${applicationName}" = "Continue playing in ${applicationName}";
+"Pause ${applicationName}" = "Pause ${applicationName}";
+"Pause music in ${applicationName}" = "Pause music in ${applicationName}";
+"Stop ${applicationName}" = "Stop ${applicationName}";
+"Next song in ${applicationName}" = "Next song in ${applicationName}";
+"Skip this song in ${applicationName}" = "Skip this song in ${applicationName}";
+"Skip in ${applicationName}" = "Skip in ${applicationName}";
+"Previous song in ${applicationName}" = "Previous song in ${applicationName}";
+"Go back a song in ${applicationName}" = "Go back a song in ${applicationName}";
+"Like this song in ${applicationName}" = "Like this song in ${applicationName}";
+"Add this song to my favorites in ${applicationName}" = "Add this song to my favorites in ${applicationName}";
+"Add the current song to favorites in ${applicationName}" = "Add the current song to favorites in ${applicationName}";
+"Favorite this song in ${applicationName}" = "Favorite this song in ${applicationName}";
+"Set a ${length} sleep timer in ${applicationName}" = "Set a ${length} sleep timer in ${applicationName}";
+"Set a sleep timer in ${applicationName}" = "Set a sleep timer in ${applicationName}";
+"Start a sleep timer in ${applicationName}" = "Start a sleep timer in ${applicationName}";
+"Play Music" = "Play Music";
+"Shuffle Liked Songs" = "Shuffle Liked Songs";
+"Recently Added" = "Recently Added";
+"Start Radio" = "Start Radio";
+"Resume" = "Resume";
+"Pause" = "Pause";
+"Next Song" = "Next Song";
+"Previous Song" = "Previous Song";
+"Like Song" = "Like Song";
+"Sleep Timer" = "Sleep Timer";

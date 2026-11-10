@@ -1,4 +1,5 @@
 import SwiftUI
+import JellyampCore
 
 @main
 struct JellyampApp: App {
@@ -6,6 +7,14 @@ struct JellyampApp: App {
     // Shared with Siri/Shortcuts intents and the CarPlay scene, which run
     // outside this view tree (see `DependencyContainer.shared`).
     @StateObject private var container = DependencyContainer.shared
+
+    init() {
+        // Core composes some user-facing text itself (counts, durations,
+        // station titles) and only knows English; hand it the localized
+        // strings before anything is drawn or spoken. `init` runs for every
+        // launch, including background launches for Siri and CarPlay.
+        CoreStrings.current = .localized
+    }
 
     var body: some Scene {
         WindowGroup {

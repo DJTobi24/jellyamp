@@ -440,10 +440,11 @@ enum DownloadFormatting {
 }
 
 /// `ContentUnavailableView` needs iOS 17; this is the 16-compatible stand-in.
+/// Title and description are localization keys (pass string literals).
 struct ContentUnavailableCompatView: View {
-    let title: String
+    let title: LocalizedStringKey
     let systemImage: String
-    let description: String
+    let description: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 12) {
